@@ -1,0 +1,1447 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MGC Trade Journal</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d0f14;color:#e2e6f0;font-family:'Inter',system-ui,sans-serif;font-size:14px}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:#0d0f14}
+::-webkit-scrollbar-thumb{background:#1f2435;border-radius:99px}
+input,select,textarea{background:#0d0f14;border:1px solid #1f2435;border-radius:7px;padding:9px 12px;color:#e2e6f0;font-size:13px;font-family:inherit;outline:none;width:100%}
+input:focus,select:focus,textarea:focus{border-color:#f0b429}
+button{cursor:pointer;font-family:inherit}
+table{border-collapse:collapse;width:100%}
+a{color:#f0b429;text-decoration:none}
+.pill{display:inline-block;border-radius:5px;padding:2px 9px;font-size:11px;font-weight:700}
+.spinner{width:34px;height:34px;border:3px solid #1f2435;border-top-color:#f0b429;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ── SUPABASE CONFIG ───────────────────────────────────────────────────────
+const SUPABASE_URL='https://wcsozyfyvxzyqvnjuhnp.supabase.co';
+const SUPABASE_ANON_KEY='sb_publishable_whgmf6wRSe3FaaM7Z1GOew_dhjNws2f';
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+
+// ── CONSTANTS ──────────────────────────────────────────────────────────────
+const C={bg:'#0d0f14',surface:'#13161e',card:'#181c26',border:'#1f2435',accent:'#f0b429',green:'#22c55e',red:'#ef4444',muted:'#4b5368',text:'#e2e6f0',sub:'#8891a8'};
+const uid=()=>Math.random().toString(36).slice(2,9);
+const fmt=(n,d=2)=>isNaN(n)?'—':Number(n).toFixed(d);
+const fmtD=(n)=>{if(n===null||n===undefined||isNaN(n))return'—';const a=Math.abs(n).toFixed(2);return n<0?`-$${a}`:`$${a}`;};
+const esc=(s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const todayStr=()=>new Date().toISOString().slice(0,10);
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const SETUPS=['OTE Long','OTE Short','OB Bounce','FVG Fill','Liquidity Sweep','BOS Entry','CHoCH Entry','IOFED','Silver Bullet','Other'];
+const SESSIONS=['London','New York','London/NY Overlap','Asian','Other'];
+const EMOTIONS=['😌 Calm','💪 Confident','😰 Hesitant','😤 FOMO','😠 Revenge','😐 Bored','🎯 Focused','😟 Anxious','😴 Tired'];
+const PLAN_OPTIONS=['✅ Fully in plan','⚠️ Mostly in plan','❌ Off plan'];
+const QUOTES=[
+  {text:"And whoever relies upon Allah — then He is sufficient for him.",source:"Quran 65:3"},
+  {text:"Verily, with hardship comes ease.",source:"Quran 94:6"},
+  {text:"Allah does not burden a soul beyond that it can bear.",source:"Quran 2:286"},
+  {text:"And be patient, for indeed Allah does not allow to be lost the reward of those who do good.",source:"Quran 11:115"},
+  {text:"Do not lose hope, nor be sad.",source:"Quran 3:139"},
+  {text:"Indeed, the patient will be given their reward without account.",source:"Quran 39:10"},
+  {text:"If you are grateful, I will surely increase you in favor.",source:"Quran 14:7"},
+  {text:"Do not grieve. Indeed, Allah is with us.",source:"Quran 9:40"},
+  {text:"Your Lord has not taken leave of you, nor has He detested you.",source:"Quran 93:3"},
+  {text:"The strong man is not the one who overcomes people. He is the one who controls himself when he is angry.",source:"Bukhari & Muslim"},
+  {text:"Tie your camel first, then put your trust in Allah.",source:"Tirmidhi"},
+  {text:"Take advantage of five before five: your youth, your health, your wealth, your free time, and your life.",source:"Al-Hakim"},
+  {text:"Be in this world as though you were a stranger or a traveller.",source:"Bukhari"},
+  {text:"Speak good or remain silent.",source:"Bukhari & Muslim"},
+  {text:"Patience is the key to relief.",source:"Imam Ali (RA)"},
+  {text:"Do not let your difficulties fill you with anxiety. It is only in the darkest nights that stars shine most brightly.",source:"Imam Ali (RA)"},
+  {text:"Whoever knows himself, knows his Lord.",source:"Ibn Arabi"},
+  {text:"Patience is half of faith.",source:"Imam Al-Ghazali"},
+  {text:"The heart that beats for Allah is always a stranger in this world.",source:"Ibn al-Qayyim"},
+  {text:"Haste is from the devil, patience is from the Most Merciful.",source:"Arabic Proverb"},
+  {text:"Renew yourself every day. Do so without fail, and do it to the last.",source:"Ibn Ata'illah"},
+  {text:"Silence is the best answer to someone who does not value your words.",source:"Imam Ali (RA)"},
+  {text:"Make things easy, do not make them difficult.",source:"Bukhari"},
+  {text:"Whoever is not grateful for small things will not be grateful for large things.",source:"Ahmad"},
+  {text:"So remember Me; I will remember you. And be grateful to Me and do not deny Me.",source:"Quran 2:152"},
+];
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+const S={
+  page:'Dashboard',
+  trades:[],
+  quoteIdx:Math.floor(Math.random()*QUOTES.length),
+  calMonth:new Date().getMonth(),
+  calYear:new Date().getFullYear(),
+  showImport:false,
+  importStatus:'idle',
+  importParsed:[],
+  importError:'',
+  importDups:0,
+  journalOpen:null, // trade id being journalled
+  journalDraft:{},
+  showTradeForm:false,
+  editingTrade:null,
+  sort:{col:'date',dir:-1},
+  selected:new Set(),
+  showHidden:false,
+  dateFilter:'all', // 'today'|'week'|'month'|'year'|'all'
+  tradeForm:{date:todayStr(),time:'',side:'Long',contracts:1,entry:'',sl:'',tp:'',exit:'',setup:'OTE Long',session:'New York',result:''},
+  // Auth state
+  user:null,
+  authView:'login', // 'login' | 'signup'
+  authError:'',
+  authLoading:false,
+  appLoading:true,
+  syncError:'',
+  saving:false,
+};
+
+// ── SUPABASE DATA LAYER ──────────────────────────────────────────────────
+// Maps a DB row (snake_case) to the app's trade object (camelCase-ish, matches original shape)
+function rowToTrade(r){
+  return {
+    id:r.id,
+    date:r.date,
+    time:r.time||'',
+    side:r.side,
+    contracts:r.contracts||1,
+    entry:r.entry||'',
+    sl:r.sl||'',
+    tp:r.tp||'',
+    exit:r.exit||'',
+    setup:r.setup||'',
+    session:r.session||'',
+    pnl:r.pnl===null?null:Number(r.pnl),
+    actual_r:r.actual_r===null?null:String(r.actual_r),
+    planned_r:r.planned_r===null?null:String(r.planned_r),
+    hidden:!!r.hidden,
+    journal:r.journal||{},
+    _mergedPartials:r.merged_partials||undefined,
+  };
+}
+
+// Maps an app trade object back to DB row shape for insert/update
+function tradeToRow(t){
+  return {
+    date:t.date,
+    time:t.time||null,
+    side:t.side,
+    contracts:parseInt(t.contracts)||1,
+    entry:t.entry?String(t.entry):null,
+    sl:t.sl?String(t.sl):null,
+    tp:t.tp?String(t.tp):null,
+    exit:t.exit?String(t.exit):null,
+    setup:t.setup||null,
+    session:t.session||null,
+    pnl:t.pnl===null||t.pnl===undefined?null:t.pnl,
+    actual_r:t.actual_r===null||t.actual_r===undefined?null:t.actual_r,
+    planned_r:t.planned_r===null||t.planned_r===undefined?null:t.planned_r,
+    hidden:!!t.hidden,
+    journal:t.journal||{},
+    merged_partials:t._mergedPartials||null,
+  };
+}
+
+async function loadState(){
+  S.appLoading=true;
+  const {data:{session}}=await sb.auth.getSession();
+  if(session&&session.user){
+    S.user=session.user;
+    await loadTradesFromDB();
+  }
+  S.appLoading=false;
+  render();
+}
+
+async function loadTradesFromDB(){
+  if(!S.user)return;
+  const {data,error}=await sb.from('trades').select('*').order('date',{ascending:false}).order('time',{ascending:false});
+  if(error){
+    S.syncError='Kon trades niet laden: '+error.message;
+    S.trades=[];
+    return;
+  }
+  S.syncError='';
+  S.trades=(data||[]).map(rowToTrade);
+}
+
+// persist() is called after every local mutation of S.trades.
+// Since Supabase is the source of truth, individual create/update/delete
+// functions below talk to the DB directly; persist() just re-renders.
+function persist(){ render(); }
+
+async function dbInsertTrade(trade){
+  if(!S.user)return null;
+  const row={...tradeToRow(trade),user_id:S.user.id};
+  if(trade.id&&typeof trade.id==='string'&&trade.id.length===36){row.id=trade.id;}
+  const {data,error}=await sb.from('trades').insert(row).select().single();
+  if(error){alert('Opslaan mislukt: '+error.message);return null;}
+  return rowToTrade(data);
+}
+
+async function dbUpdateTrade(id,trade){
+  if(!S.user)return null;
+  const {data,error}=await sb.from('trades').update(tradeToRow(trade)).eq('id',id).select().single();
+  if(error){alert('Bijwerken mislukt: '+error.message);return null;}
+  return rowToTrade(data);
+}
+
+async function dbDeleteTrade(id){
+  if(!S.user)return false;
+  const {error}=await sb.from('trades').delete().eq('id',id);
+  if(error){alert('Verwijderen mislukt: '+error.message);return false;}
+  return true;
+}
+
+async function dbDeleteTrades(ids){
+  if(!S.user||!ids.length)return false;
+  const {error}=await sb.from('trades').delete().in('id',ids);
+  if(error){alert('Verwijderen mislukt: '+error.message);return false;}
+  return true;
+}
+
+async function dbBulkInsert(trades){
+  if(!S.user||!trades.length)return [];
+  const rows=trades.map(t=>({...tradeToRow(t),user_id:S.user.id}));
+  const {data,error}=await sb.from('trades').insert(rows).select();
+  if(error){alert('Import mislukt: '+error.message);return [];}
+  return (data||[]).map(rowToTrade);
+}
+
+// ── CALCS ──────────────────────────────────────────────────────────────────
+function calcPnl(entry,exit,side,contracts){
+  if(!entry||!exit||!contracts)return null;
+  return Math.round((side==='Long'?1:-1)*(parseFloat(exit)-parseFloat(entry))*10*parseInt(contracts)*100)/100;
+}
+function calcActualR(entry,sl,exit,side){
+  if(!entry||!sl||!exit)return null;
+  const risk=Math.abs(parseFloat(entry)-parseFloat(sl));
+  if(!risk)return null;
+  return((side==='Long'?1:-1)*(parseFloat(exit)-parseFloat(entry))/risk).toFixed(2);
+}
+function calcPlannedR(entry,sl,tp,side){
+  if(!entry||!sl||!tp)return null;
+  const risk=Math.abs(parseFloat(entry)-parseFloat(sl));
+  if(!risk)return null;
+  return(Math.abs(parseFloat(tp)-parseFloat(entry))/risk).toFixed(2);
+}
+function calcJournalRR(riskAmount, pnl){
+  const r=parseFloat(riskAmount);
+  if(!r||r<=0||pnl===null||pnl===undefined)return null;
+  return pnl/r;
+}
+
+function isInDateRange(dateStr, filter){
+  if(filter==='all'||!dateStr)return true;
+  const d=new Date(dateStr+'T00:00:00');
+  const now=new Date();
+  const todayY=now.getFullYear(),todayM=now.getMonth(),todayD=now.getDate();
+  if(filter==='today'){
+    return d.getFullYear()===todayY&&d.getMonth()===todayM&&d.getDate()===todayD;
+  }
+  if(filter==='week'){
+    // Monday-based week
+    const startOfWeek=new Date(now);
+    const dow=(now.getDay()+6)%7; // 0=Monday
+    startOfWeek.setDate(now.getDate()-dow);
+    startOfWeek.setHours(0,0,0,0);
+    const endOfWeek=new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate()+7);
+    return d>=startOfWeek&&d<endOfWeek;
+  }
+  if(filter==='month'){
+    return d.getFullYear()===todayY&&d.getMonth()===todayM;
+  }
+  if(filter==='year'){
+    return d.getFullYear()===todayY;
+  }
+  return true;
+}
+
+function filteredTrades(){
+  return S.trades.filter(t=>!t.hidden&&isInDateRange(t.date,S.dateFilter));
+}
+
+function journaledTrades(){
+  return filteredTrades().filter(t=>t.journal&&(t.journal.confluences||t.journal.wentWell||t.journal.wentWrong||(t.journal.j_emotionBefore&&t.journal.j_emotionBefore.length)||t.journal.inPlan));
+}
+
+function getStats(trades){
+  const cl=trades.filter(t=>t.pnl!==null&&t.pnl!==undefined);
+  const w=cl.filter(t=>t.pnl>0),l=cl.filter(t=>t.pnl<0);
+  const tot=cl.reduce((a,t)=>a+t.pnl,0);
+  const wr=cl.length?w.length/cl.length*100:0;
+  const gw=w.reduce((a,t)=>a+t.pnl,0),gl=Math.abs(l.reduce((a,t)=>a+t.pnl,0));
+  const pf=gl?gw/gl:null;
+  const rv=cl.filter(t=>t.actual_r).map(t=>parseFloat(t.actual_r));
+  const ar=rv.length?rv.reduce((a,v)=>a+v,0)/rv.length:null;
+  return{closed:cl,wins:w,losses:l,total:tot,winRate:wr,pf,avgR:ar};
+}
+
+// ── UI HELPERS ──────────────────────────────────────────────────────────────
+const card=(c,ex='')=>`<div style="background:${C.card};border:1px solid ${C.border};border-radius:12px;padding:22px 26px;${ex}">${c}</div>`;
+const btn=(l,o,ex='')=>`<button onclick="${o}" style="background:${C.accent};color:#000;border:none;border-radius:7px;padding:9px 20px;font-weight:700;cursor:pointer;font-size:13px;${ex}">${l}</button>`;
+const btnG=(l,o,ex='')=>`<button onclick="${o}" style="background:transparent;color:${C.sub};border:1px solid ${C.border};border-radius:7px;padding:8px 16px;cursor:pointer;font-size:13px;${ex}">${l}</button>`;
+const tag=(t,c)=>`<span class="pill" style="background:${c}22;color:${c}">${esc(t)}</span>`;
+const lbl=(t)=>`<div style="font-size:11px;color:${C.sub};text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">${t}</div>`;
+const inp=(id,type,val,ph='')=>`<input id="${id}" type="${type}" value="${esc(val)}" placeholder="${esc(ph)}" oninput="onI('${id}',this.value)" style="background:#0d0f14;border:1px solid ${C.border};border-radius:7px;padding:9px 12px;color:${C.text};font-size:13px;width:100%;outline:none;box-sizing:border-box"/>`;
+const sel=(id,opts,val)=>`<select id="${id}" onchange="onI('${id}',this.value)" style="background:#0d0f14;border:1px solid ${C.border};border-radius:7px;padding:9px 12px;color:${C.text};font-size:13px;width:100%;outline:none;box-sizing:border-box">${opts.map(o=>`<option value="${esc(o)}"${o==val?' selected':''}>${esc(o)}</option>`).join('')}</select>`;
+const statBox=(label,val,col,sub='')=>`<div style="background:${C.card};border:1px solid ${C.border};border-radius:12px;padding:18px 22px;flex:1;min-width:120px"><div style="font-size:11px;color:${C.sub};text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">${label}</div><div style="font-size:26px;font-weight:800;color:${col||C.text};font-variant-numeric:tabular-nums">${val}</div>${sub?`<div style="font-size:11px;color:${C.sub};margin-top:4px">${sub}</div>`:''}</div>`;
+
+function onI(id,val){
+  const tf=S.tradeForm,jd=S.journalDraft;
+  const tfields=['date','time','side','contracts','entry','sl','tp','exit','setup','session','result'];
+  if(tfields.includes(id)){tf[id]=val;updateCalcs();}
+  else if(id.startsWith('j_')){
+    jd[id.slice(2)]=val;
+    if(id==='j_screenshot') rerenderScreenshot();
+    if(id==='j_riskAmount') rerenderRR();
+  }
+}
+
+function rerenderRR(){
+  const t=S.trades.find(x=>x.id===S.journalOpen);
+  if(!t)return;
+  const el=document.getElementById('rr_display');
+  if(!el)return;
+  const rrVal=calcJournalRR(S.journalDraft.riskAmount,t.pnl);
+  el.textContent=rrVal!==null?fmt(rrVal)+'R':'— vul Risk $ in —';
+  el.style.color=rrVal!==null?(rrVal>=0?C.green:C.red):C.muted;
+}
+
+function updateCalcs(){
+  const f=S.tradeForm;
+  const pnl=calcPnl(f.entry,f.exit,f.side,f.contracts);
+  const pr=calcPlannedR(f.entry,f.sl,f.tp,f.side);
+  const ar=calcActualR(f.entry,f.sl,f.exit,f.side);
+  const set=(id,v,col)=>{const el=document.getElementById(id);if(el){el.textContent=v;if(col)el.style.color=col;}};
+  set('c_pnl',pnl!==null?fmtD(pnl):'—',pnl>0?C.green:pnl<0?C.red:C.text);
+  set('c_pr',pr?`1:${pr}`:'—',C.accent);
+  set('c_ar',ar!==null?`${ar}R`:'—',ar>0?C.green:ar<0?C.red:C.text);
+}
+
+// ── QUOTE ──────────────────────────────────────────────────────────────────
+function dateFilterBar(){
+  const opts=[['today','Vandaag'],['week','Deze week'],['month','Deze maand'],['year','Dit jaar'],['all','Alles']];
+  return `<div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">
+    ${opts.map(([val,label])=>`<button onclick="setDateFilter('${val}')" style="background:${S.dateFilter===val?C.accent+'22':'transparent'};color:${S.dateFilter===val?C.accent:C.sub};border:1px solid ${S.dateFilter===val?C.accent:C.border};border-radius:7px;padding:7px 14px;cursor:pointer;font-size:12px;font-weight:${S.dateFilter===val?700:400};font-family:inherit">${label}</button>`).join('')}
+  </div>`;
+}
+function setDateFilter(val){S.dateFilter=val;render();}
+
+function renderQuote(){
+  const q=QUOTES[S.quoteIdx];
+  return `<div style="background:linear-gradient(135deg,#13161e,#1a1f2e);border:1px solid ${C.accent}33;border-radius:12px;padding:22px 26px;margin-bottom:24px;position:relative;overflow:hidden">
+    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,${C.accent},transparent)"></div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <button onclick="prevQ()" style="background:none;border:none;color:${C.muted};cursor:pointer;font-size:22px;padding:0 6px;line-height:1">&#8249;</button>
+      <div style="flex:1;text-align:center;padding:8px 0">
+        <div style="font-size:10px;color:${C.muted};letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px">✦ Daily Reminder ✦</div>
+        <div style="font-size:14px;font-style:italic;color:${C.text};line-height:1.85;margin-bottom:10px">"${esc(q.text)}"</div>
+        <div style="font-size:11px;color:${C.accent};font-weight:700;letter-spacing:.06em">— ${esc(q.source)}</div>
+      </div>
+      <button onclick="nextQ()" style="background:none;border:none;color:${C.muted};cursor:pointer;font-size:22px;padding:0 6px;line-height:1">&#8250;</button>
+    </div>
+    <div style="display:flex;justify-content:center;gap:4px;margin-top:14px">
+      ${QUOTES.map((_,i)=>`<div onclick="goQ(${i})" style="width:${i===S.quoteIdx?14:4}px;height:4px;border-radius:99px;background:${i===S.quoteIdx?C.accent:C.border};cursor:pointer;transition:all .3s"></div>`).join('')}
+    </div>
+  </div>`;
+}
+function prevQ(){S.quoteIdx=(S.quoteIdx-1+QUOTES.length)%QUOTES.length;render();}
+function nextQ(){S.quoteIdx=(S.quoteIdx+1)%QUOTES.length;render();}
+function goQ(i){S.quoteIdx=i;render();}
+
+// ── EQUITY LINE ──────────────────────────────────────────────────────────
+function renderEquity(){
+  const cl=journaledTrades().filter(t=>t.pnl!==null&&t.pnl!==undefined).sort((a,b)=>a.date.localeCompare(b.date));
+  if(cl.length<2)return`<div style="color:${C.muted};text-align:center;padding:36px 0;font-size:13px">Voeg meer trades toe om de equity curve te zien</div>`;
+  let cum=0;const pts=[0,...cl.map(t=>{cum+=t.pnl;return cum;})];
+  const min=Math.min(...pts),max=Math.max(...pts),range=max-min||1,W=600,H=110;
+  const xs=pts.map((_,i)=>(i/(pts.length-1))*W),ys=pts.map(v=>H-((v-min)/range)*H);
+  const d=xs.map((x,i)=>`${i===0?'M':'L'}${x},${ys[i]}`).join(' '),col=cum>=0?C.green:C.red;
+  return`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:110px"><defs><linearGradient id="eq" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${col}" stop-opacity=".2"/><stop offset="100%" stop-color="${col}" stop-opacity="0"/></linearGradient></defs><path d="${d} L${W},${H} L0,${H} Z" fill="url(#eq)"/><path d="${d}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round"/></svg>`;
+}
+
+// ── DASHBOARD ──────────────────────────────────────────────────────────────
+function renderDashboard(){
+  const jt=journaledTrades(); // already filtered by hidden + date range
+  const s=getStats(jt);
+
+  // Realized RR stats (from journal riskAmount + pnl)
+  const withRisk=jt.filter(t=>t.journal&&t.journal.riskAmount&&parseFloat(t.journal.riskAmount)>0&&t.pnl!==null&&t.pnl!==undefined);
+  const realizedRRs=withRisk.map(t=>t.pnl/parseFloat(t.journal.riskAmount));
+  const avgRealizedRR=realizedRRs.length?realizedRRs.reduce((a,v)=>a+v,0)/realizedRRs.length:null;
+
+  const recent=jt.slice(0,8).map(t=>{
+    const win=t.pnl>0;
+    const confl=(t.journal&&t.journal.confluences)?t.journal.confluences:'';
+    return`<tr onclick="openJournal('${t.id}')" style="border-bottom:1px solid ${C.border};cursor:pointer" class="trade-row">
+      <td style="padding:10px 14px;color:${C.sub};font-size:12px;white-space:nowrap">${esc(t.date)}${t.time?`<div style="color:${C.muted};font-size:10px">${esc(t.time)}</div>`:''}</td>
+      <td style="padding:10px 14px">${tag(t.side,t.side==='Long'?C.green:C.red)}</td>
+      <td style="padding:10px 14px;font-size:12px;color:${C.sub};max-width:320px;line-height:1.5">${esc(confl)||'<span style=\'color:'+C.muted+'\'>—</span>'}</td>
+      <td style="padding:10px 14px">${t.pnl===null||t.pnl===undefined?tag('Open',C.muted):tag(win?'Win':'Loss',win?C.green:C.red)}</td>
+      <td style="padding:10px 14px;font-weight:700;color:${t.pnl>0?C.green:t.pnl<0?C.red:C.sub};font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap">${t.pnl!==null&&t.pnl!==undefined?fmtD(t.pnl):'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const th=`padding:9px 14px;text-align:left;font-size:11px;color:${C.sub};text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid ${C.border}`;
+
+  return`
+    <style>.trade-row{transition:background .1s}.trade-row:hover{background:#ffffff05}</style>
+    <div style="font-size:20px;font-weight:800;margin-bottom:4px">Dashboard</div>
+    <div style="color:${C.sub};font-size:13px;margin-bottom:18px">MGC Futures — Micro Gold · alleen gejournalde trades</div>
+    ${dateFilterBar()}
+    ${renderQuote()}
+    <div style="display:flex;gap:14px;margin-bottom:22px;flex-wrap:wrap">
+      ${statBox('Totaal P&L',fmtD(s.total),s.total>=0?C.green:C.red,`${s.closed.length} gesloten trades`)}
+      ${statBox('Win Rate',s.closed.length?fmt(s.winRate,1)+'%':'—',C.text,`${s.wins.length}W / ${s.losses.length}L`)}
+      ${statBox('Profit Factor',s.pf?fmt(s.pf):'—',s.pf>=1?C.green:C.red)}
+      ${statBox('Gerealiseerde RR',avgRealizedRR!==null?fmt(avgRealizedRR)+'R':'—',avgRealizedRR>0?C.green:avgRealizedRR<0?C.red:C.text,withRisk.length?`gem. over ${withRisk.length} trades`:'vul Risk $ in bij journal')}
+    </div>
+    ${card(`<div style="font-size:13px;font-weight:700;margin-bottom:14px;color:${C.sub}">Equity Curve</div>${renderEquity()}`,'margin-bottom:22px')}
+    ${card(`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:700">Recente Trades</div>
+        <div style="display:flex;gap:8px">${btnG('Alle trades','nav(\'Trades\')','font-size:12px;padding:6px 12px')}</div>
+      </div>
+      ${jt.length?`<table style="width:100%">
+        <thead><tr>
+          ${['Datum','Side','Confluences','Resultaat','P&L'].map(h=>`<th style="${th}">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${recent}</tbody>
+      </table>`:`<div style="color:${C.muted};text-align:center;padding:28px 0;font-size:13px">Geen gejournalde trades in deze periode — vul een journal in bij een trade om hem hier te zien</div>`}
+    `)}`;
+}
+
+// ── TRADE LIST ──────────────────────────────────────────────────────────────
+function renderTrades(){
+  const visible=S.trades.filter(t=>(S.showHidden?t.hidden:!t.hidden)&&isInDateRange(t.date,S.dateFilter));
+  const sorted=[...visible].sort((a,b)=>{
+    const {col,dir}=S.sort;
+    let av,bv;
+    if(col==='date'){av=(a.date||'')+(a.time||'');bv=(b.date||'')+(b.time||'');}
+    else if(col==='side'){av=a.side;bv=b.side;}
+    else if(col==='pnl'){av=a.pnl!==null?a.pnl:-Infinity;bv=b.pnl!==null?b.pnl:-Infinity;}
+    else if(col==='actual_r'){av=a.actual_r!==null?parseFloat(a.actual_r):-Infinity;bv=b.actual_r!==null?parseFloat(b.actual_r):-Infinity;}
+    else if(col==='entry'){av=parseFloat(a.entry)||0;bv=parseFloat(b.entry)||0;}
+    else if(col==='setup'){av=a.setup||'';bv=b.setup||'';}
+    else if(col==='session'){av=a.session||'';bv=b.session||'';}
+    else{av=(a.date||'')+(a.time||'');bv=(b.date||'')+(b.time||'');}
+    if(av<bv)return -1*dir;
+    if(av>bv)return 1*dir;
+    return 0;
+  });
+
+  const allIds=sorted.map(t=>t.id);
+  const allSelected=allIds.length>0&&allIds.every(id=>S.selected.has(id));
+  const anySelected=S.selected.size>0;
+
+  const arrow=(col)=>{
+    if(S.sort.col!==col)return'<span style="opacity:.25;margin-left:4px">⇅</span>';
+    return S.sort.dir===1?'<span style="margin-left:4px;color:#f0b429">↑</span>':'<span style="margin-left:4px;color:#f0b429">↓</span>';
+  };
+  const thS=`padding:10px 14px;text-align:left;font-size:11px;color:${C.sub};text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid ${C.border};cursor:pointer;user-select:none;white-space:nowrap`;
+  const thB=`padding:10px 14px;text-align:left;font-size:11px;color:${C.sub};text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid ${C.border}`;
+
+  const rows=sorted.map(t=>{
+    const hasJ=t.journal&&(t.journal.confluences||t.journal.wentWell||t.journal.wentWrong||t.journal.emotionBefore);
+    const isSel=S.selected.has(t.id);
+    const confl=(t.journal&&t.journal.confluences)?t.journal.confluences:'';
+    const win=t.pnl>0;
+    return`<tr style="border-bottom:1px solid ${C.border};background:${isSel?C.accent+'11':'transparent'}" class="trade-row">
+      <td style="padding:10px 14px" onclick="event.stopPropagation()">
+        <input type="checkbox" ${isSel?'checked':''} onchange="toggleSel('${t.id}')" style="width:15px;height:15px;cursor:pointer;accent-color:${C.accent}"/>
+      </td>
+      <td style="padding:12px 14px;color:${C.sub};font-size:12px;cursor:pointer;white-space:nowrap" onclick="openJournal('${t.id}')">${esc(t.date)}${t.time?`<div style="color:${C.muted};font-size:11px">${esc(t.time)}</div>`:''}</td>
+      <td style="padding:12px 14px;cursor:pointer" onclick="openJournal('${t.id}')">${tag(t.side,t.side==='Long'?C.green:C.red)}</td>
+      <td style="padding:12px 14px;font-size:12px;color:${C.sub};cursor:pointer" onclick="openJournal('${t.id}')">${t.contracts||1}c</td>
+      <td style="padding:12px 14px;font-size:12px;font-variant-numeric:tabular-nums;cursor:pointer" onclick="openJournal('${t.id}')">${esc(t.entry)||'—'}</td>
+      <td style="padding:12px 14px;font-size:12px;font-variant-numeric:tabular-nums;cursor:pointer" onclick="openJournal('${t.id}')">${esc(t.exit)||'—'}</td>
+      <td style="padding:12px 14px;font-size:12px;color:${C.sub};cursor:pointer" onclick="openJournal('${t.id}')">${esc(t.setup)}</td>
+      <td style="padding:12px 14px;font-size:12px;color:${C.sub};cursor:pointer" onclick="openJournal('${t.id}')">${esc(t.session)}</td>
+      <td style="padding:12px 14px;font-size:12px;color:${C.sub};cursor:pointer;max-width:280px;line-height:1.5" onclick="openJournal('${t.id}')">${esc(confl)||'<span style=\'color:'+C.muted+'\'>—</span>'}</td>
+      <td style="padding:12px 14px;cursor:pointer" onclick="openJournal('${t.id}')">${t.pnl===null||t.pnl===undefined?tag('Open',C.muted):tag(win?'Win':'Loss',win?C.green:C.red)}</td>
+      <td style="padding:12px 14px;font-weight:700;color:${t.pnl>0?C.green:t.pnl<0?C.red:C.sub};font-variant-numeric:tabular-nums;cursor:pointer" onclick="openJournal('${t.id}')">${t.pnl!==null&&t.pnl!==undefined?fmtD(t.pnl):'open'}</td>
+      <td style="padding:12px 14px;font-weight:600;color:${t.actual_r>0?C.green:t.actual_r<0?C.red:C.sub};cursor:pointer" onclick="openJournal('${t.id}')">${t.actual_r!==null&&t.actual_r!==undefined?t.actual_r+'R':'—'}</td>
+      <td style="padding:12px 14px;font-size:12px;cursor:pointer" onclick="openJournal('${t.id}')">${hasJ?`<span style="color:${C.accent}">📝 Journal</span>`:`<span style="color:${C.muted}">leeg</span>`}</td>
+    </tr>`;
+  }).join('');
+
+  const bulkBar=anySelected?`
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:${C.accent}11;border:1px solid ${C.accent}33;border-radius:9px;margin-bottom:16px;flex-wrap:wrap">
+      <div style="font-size:13px;font-weight:700;color:${C.accent}">${S.selected.size} geselecteerd</div>
+      <div style="flex:1"></div>
+      ${S.selected.size>=2?`<button onclick="mergeSelected()" style="background:${C.green}22;color:${C.green};border:1px solid ${C.green}44;border-radius:7px;padding:7px 14px;cursor:pointer;font-size:12px;font-family:inherit">⛓ Samenvoegen</button>`:''}
+      <button onclick="hideSelected()" style="background:${C.surface};color:${C.sub};border:1px solid ${C.border};border-radius:7px;padding:7px 14px;cursor:pointer;font-size:12px;font-family:inherit">👁 Verbergen</button>
+      <button onclick="deleteSelected()" style="background:${C.red}22;color:${C.red};border:1px solid ${C.red}44;border-radius:7px;padding:7px 14px;cursor:pointer;font-size:12px;font-family:inherit">🗑 Verwijderen</button>
+      <button onclick="S.selected=new Set();render()" style="background:transparent;color:${C.sub};border:1px solid ${C.border};border-radius:7px;padding:7px 14px;cursor:pointer;font-size:12px;font-family:inherit">Deselecteer</button>
+    </div>`:'';
+
+  const hiddenCount=S.trades.filter(t=>t.hidden).length;
+
+  return`
+    <style>.trade-row{transition:background .1s}.trade-row:hover{background:#ffffff05!important}</style>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="font-size:20px;font-weight:800">Trades</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        ${hiddenCount>0?`<button onclick="S.showHidden=!S.showHidden;render()" style="background:${S.showHidden?C.accent+'22':'transparent'};color:${S.showHidden?C.accent:C.sub};border:1px solid ${S.showHidden?C.accent:C.border};border-radius:7px;padding:8px 14px;cursor:pointer;font-size:12px;font-family:inherit">👁 ${S.showHidden?'Verborgen verbergen':'Verborgen tonen'} (${hiddenCount})</button>`:''}
+        ${btnG('⬆ Tradovate CSV','openImport()')}
+        ${btn('+ Handmatig toevoegen','openTradeForm()')}
+      </div>
+    </div>
+    ${dateFilterBar()}
+    ${bulkBar}
+    ${card(`<table>
+      <thead><tr>
+        <th style="${thB}"><input type="checkbox" ${allSelected?'checked':''} onchange="toggleAll()" style="width:15px;height:15px;cursor:pointer;accent-color:${C.accent}"/></th>
+        <th style="${thS}" onclick="sortBy('date')">Datum${arrow('date')}</th>
+        <th style="${thS}" onclick="sortBy('side')">Side${arrow('side')}</th>
+        <th style="${thB}">Qty</th>
+        <th style="${thS}" onclick="sortBy('entry')">Entry${arrow('entry')}</th>
+        <th style="${thB}">Exit</th>
+        <th style="${thS}" onclick="sortBy('setup')">Setup${arrow('setup')}</th>
+        <th style="${thS}" onclick="sortBy('session')">Sessie${arrow('session')}</th>
+        <th style="${thB}">Confluences</th>
+        <th style="${thB}">Resultaat</th>
+        <th style="${thS}" onclick="sortBy('pnl')">P&amp;L${arrow('pnl')}</th>
+        <th style="${thS}" onclick="sortBy('actual_r')">R${arrow('actual_r')}</th>
+        <th style="${thB}">Journal</th>
+      </tr></thead>
+      <tbody>${rows||`<tr><td colspan="13" style="text-align:center;padding:48px;color:${C.muted}">Geen trades in deze periode</td></tr>`}</tbody>
+    </table>`)}`;
+}
+
+// ── TRADE FORM (handmatig) ──────────────────────────────────────────────────
+function renderTradeForm(){
+  const f=S.tradeForm;
+  const pnl=calcPnl(f.entry,f.exit,f.side,f.contracts);
+  const pr=calcPlannedR(f.entry,f.sl,f.tp,f.side);
+  const ar=calcActualR(f.entry,f.sl,f.exit,f.side);
+  return`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">
+      ${btnG('← Terug','closeTradeForm()','font-size:12px;padding:6px 12px')}
+      <div style="font-size:20px;font-weight:800">${S.editingTrade?'Trade Bewerken':'Trade Toevoegen'}</div>
+    </div>
+    ${card(`
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:18px">
+        <div>${lbl('Datum')}${inp('date','date',f.date)}</div>
+        <div>${lbl('Tijd (HH:MM)')}${inp('time','time',f.time||'')}</div>
+        <div>${lbl('Side')}${sel('side',['Long','Short'],f.side)}</div>
+        <div>${lbl('Contracts')}${inp('contracts','number',f.contracts)}</div>
+        <div>${lbl('Setup')}${sel('setup',SETUPS,f.setup)}</div>
+        <div>${lbl('Sessie')}${sel('session',SESSIONS,f.session)}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px;margin-bottom:20px">
+        <div>${lbl('Entry ($)')}${inp('entry','number',f.entry,'2350.00')}</div>
+        <div>${lbl('Stop Loss ($)')}${inp('sl','number',f.sl,'2340.00')}</div>
+        <div>${lbl('Take Profit ($)')}${inp('tp','number',f.tp,'2370.00')}</div>
+        <div>${lbl('Exit ($)')}${inp('exit','number',f.exit,'2368.50')}</div>
+      </div>
+      <div style="display:flex;gap:12px;margin-bottom:22px;flex-wrap:wrap">
+        <div style="flex:1;min-width:110px;background:#0d0f14;border:1px solid ${C.border};border-radius:9px;padding:12px 16px">
+          ${lbl('Planned R:R')}<div id="c_pr" style="font-size:20px;font-weight:800;color:${C.accent}">${pr?`1:${pr}`:'—'}</div>
+        </div>
+        <div style="flex:1;min-width:110px;background:#0d0f14;border:1px solid ${C.border};border-radius:9px;padding:12px 16px">
+          ${lbl('Actual R')}<div id="c_ar" style="font-size:20px;font-weight:800;color:${ar>0?C.green:ar<0?C.red:C.text}">${ar!==null?ar+'R':'—'}</div>
+        </div>
+        <div style="flex:1;min-width:110px;background:#0d0f14;border:1px solid ${C.border};border-radius:9px;padding:12px 16px">
+          ${lbl('P&L')}<div id="c_pnl" style="font-size:20px;font-weight:800;color:${pnl>0?C.green:pnl<0?C.red:C.text}">${pnl!==null?fmtD(pnl):'—'}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px">
+        ${btn('Opslaan','saveTrade()')}
+        ${btnG('Annuleren','closeTradeForm()')}
+      </div>
+    `,'max-width:720px')}`;
+}
+
+// ── JOURNAL VIEW ──────────────────────────────────────────────────────────────
+function toggleEmo(field, val){
+  // field is like 'j_emotionBefore' - stores array for multi-select
+  if(!Array.isArray(S.journalDraft[field])) S.journalDraft[field]=[];
+  const arr=S.journalDraft[field];
+  const idx=arr.indexOf(val);
+  if(idx>=0) arr.splice(idx,1);
+  else arr.push(val);
+  rerenderEmotions();
+}
+
+function renderJournalView(){
+  const t=S.trades.find(x=>x.id===S.journalOpen);
+  if(!t)return`<div>Trade niet gevonden</div>`;
+  const j=t.journal||{};
+  const D=S.journalDraft;
+
+  // Helper: get array value (supports old string format + new array format)
+  const getArr=(key)=>{
+    const v=D[key]!==undefined?D[key]:j[key];
+    if(!v)return[];
+    return Array.isArray(v)?v:[v];
+  };
+
+  // Multi-select emotion buttons
+  const emoSel=(field)=>{
+    const active=getArr(field);
+    return `<div style="display:flex;flex-wrap:wrap;gap:8px">${EMOTIONS.map(e=>{
+      const on=active.includes(e);
+      return `<button onclick="toggleEmo('${field}','${e}')" style="background:${on?C.accent+'22':'#0d0f14'};border:1px solid ${on?C.accent:C.border};border-radius:20px;padding:6px 12px;font-size:12px;color:${on?C.accent:C.sub};cursor:pointer;font-family:inherit;transition:all .15s">${esc(e)}</button>`;
+    }).join('')}</div>`;
+  };
+
+  // Single-select plan buttons
+  const planSel=(val)=>`<div style="display:flex;gap:8px;flex-wrap:wrap">${PLAN_OPTIONS.map(o=>{
+    const active=val===o;
+    const col=o.includes('✅')?C.green:o.includes('⚠️')?'#f59e0b':C.red;
+    return`<button onclick="onI('j_inPlan','${o===val?'':o}');rerenderEmotions()" style="background:${active?col+'22':'#0d0f14'};border:1px solid ${active?col:C.border};border-radius:20px;padding:6px 14px;font-size:12px;color:${active?col:C.sub};cursor:pointer;font-family:inherit;transition:all .15s">${esc(o)}</button>`;
+  }).join('')}</div>`;
+
+  const ta=(id,val,ph)=>`<textarea id="${id}" oninput="onI('${id}',this.value)" style="background:#0d0f14;border:1px solid ${C.border};border-radius:8px;padding:11px 14px;color:${C.text};font-size:13px;width:100%;outline:none;box-sizing:border-box;height:90px;resize:vertical;font-family:inherit;line-height:1.6" placeholder="${esc(ph)}">${esc(val)}</textarea>`;
+
+  return`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">
+      ${btnG('← Terug','closeJournal()','font-size:12px;padding:6px 12px')}
+      <div style="font-size:20px;font-weight:800">Trade Journal</div>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:22px;background:${C.card};border:1px solid ${C.border};border-radius:12px;padding:16px 22px">
+      <div style="color:${C.sub};font-size:13px">${esc(t.date)}${t.time?`<span style="margin-left:6px;color:${C.muted}">@ ${esc(t.time)}</span>`:''}</div>
+      ${tag(t.side,t.side==='Long'?C.green:C.red)}
+      ${tag(t.setup,C.accent)}
+      ${tag(t.session,C.sub)}
+      <div style="margin-left:auto;display:flex;gap:16px;align-items:center">
+        ${t.entry?`<div style="font-size:12px;color:${C.sub}">Entry <b style="color:${C.text}">${esc(t.entry)}</b></div>`:''}
+        ${t.exit?`<div style="font-size:12px;color:${C.sub}">Exit <b style="color:${C.text}">${esc(t.exit)}</b></div>`:''}
+        ${t.actual_r!==null&&t.actual_r!==undefined?`<div style="font-size:13px;font-weight:700;color:${t.actual_r>0?C.green:C.red}">${t.actual_r}R</div>`:''}
+        ${t.pnl!==null&&t.pnl!==undefined?`<div style="font-size:18px;font-weight:800;color:${t.pnl>0?C.green:t.pnl<0?C.red:C.sub}">${fmtD(t.pnl)}</div>`:''}
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      ${card(`
+        ${lbl('Emotie voor de trade')}
+        <div style="font-size:11px;color:${C.muted};margin-bottom:8px">Meerdere keuzes mogelijk</div>
+        <div id="emo_before">${emoSel('j_emotionBefore')}</div>
+      `)}
+      ${card(`
+        ${lbl('Emotie tijdens de trade')}
+        <div style="font-size:11px;color:${C.muted};margin-bottom:8px">Meerdere keuzes mogelijk</div>
+        <div id="emo_during">${emoSel('j_emotionDuring')}</div>
+      `)}
+    </div>
+
+    ${card(`
+      ${lbl('Emotie na de trade')}
+      <div style="font-size:11px;color:${C.muted};margin-bottom:8px">Meerdere keuzes mogelijk</div>
+      <div id="emo_after">${emoSel('j_emotionAfter')}</div>
+    `,'margin-bottom:16px')}
+
+    ${card(`
+      ${lbl('Was ik in mijn plan?')}
+      <div style="font-size:11px;color:${C.muted};margin-bottom:8px">Slechts 1 keuze mogelijk</div>
+      <div id="plan_sel">${planSel(D.inPlan!==undefined?D.inPlan:j.inPlan||'')}</div>
+    `,'margin-bottom:16px')}
+
+    ${(()=>{
+      const riskVal=D.riskAmount!==undefined?D.riskAmount:(j.riskAmount||'');
+      const rrVal=calcJournalRR(riskVal,t.pnl);
+      return card(`
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+          <div>
+            ${lbl('Risk Amount ($)')}
+            ${inp('j_riskAmount','number',riskVal,'bijv. 150')}
+            <div style="font-size:11px;color:${C.muted};margin-top:6px">Hoeveel je bereid was te verliezen op deze trade</div>
+          </div>
+          <div>
+            ${lbl('Gerealiseerde RR')}
+            <div id="rr_display" style="background:#0d0f14;border:1px solid ${C.border};border-radius:8px;padding:11px 14px;font-size:18px;font-weight:800;color:${rrVal!==null?(rrVal>=0?C.green:C.red):C.muted}">${rrVal!==null?fmt(rrVal)+'R':'— vul Risk $ in —'}</div>
+            <div style="font-size:11px;color:${C.muted};margin-top:6px">Automatisch berekend: P&amp;L &divide; Risk $</div>
+          </div>
+        </div>
+      `,'margin-bottom:16px');
+    })()}
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      ${card(`${lbl('Denkwijze & Confluences')}${ta('j_confluences',D.confluences!==undefined?D.confluences:j.confluences||'','Beschrijf je bias, confluences en reden voor de entry...')}`)}
+      ${card(`
+        ${lbl('Screenshot')}
+        ${inp('j_screenshot','text',D.screenshot!==undefined?D.screenshot:j.screenshot||'','Plak een afbeeldings-URL (https://i.imgur.com/... of TradingView link)...')}
+        ${(D.screenshot||j.screenshot)?`<div style="margin-top:10px;margin-bottom:2px;text-align:right"><a href="${esc(D.screenshot||j.screenshot)}" target="_blank" style="color:${C.accent};font-size:12px">↗ Openen in nieuw tabblad</a></div>`:''}
+        <div id="screenshot_preview">${(D.screenshot||j.screenshot)?`
+          <div style="border-radius:8px;overflow:hidden;border:1px solid ${C.border}">
+            <img src="${esc(D.screenshot||j.screenshot)}"
+              onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
+              style="width:100%;display:block;max-height:420px;object-fit:contain;background:#0d0f14"
+            />
+            <div style="display:none;align-items:center;justify-content:center;padding:24px;color:${C.muted};font-size:12px;flex-direction:column;gap:8px;background:#0d0f14">
+              <div>⚠ Afbeelding kan niet worden geladen</div>
+              <a href="${esc(D.screenshot||j.screenshot)}" target="_blank" style="color:${C.accent};font-size:12px">Openen in nieuw tabblad →</a>
+            </div>
+          </div>
+        `:''}
+        </div>
+      `)}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px">
+      ${card(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="width:8px;height:8px;border-radius:50%;background:${C.green}"></div>${lbl('Wat ging er goed?')}</div>${ta('j_wentWell',D.wentWell!==undefined?D.wentWell:j.wentWell||'','Waar ben je trots op in deze trade...')}`)}
+      ${card(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="width:8px;height:8px;border-radius:50%;background:${C.red}"></div>${lbl('Wat ging er fout?')}</div>${ta('j_wentWrong',D.wentWrong!==undefined?D.wentWrong:j.wentWrong||'','Wat had je anders kunnen doen...')}`)}
+    </div>
+
+    <div style="display:flex;gap:10px">
+      ${btn('Journal opslaan','saveJournal()')}
+      ${btnG('Annuleren','closeJournal()')}
+    </div>`;
+}
+
+function rerenderScreenshot(){
+  const url=S.journalDraft.screenshot||'';
+  const wrap=document.getElementById('screenshot_preview');
+  if(!wrap)return;
+  if(!url){wrap.innerHTML='';return;}
+  wrap.innerHTML=`<div style="border-radius:8px;overflow:hidden;border:1px solid ${C.border}">
+    <img src="${esc(url)}"
+      onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
+      style="width:100%;display:block;max-height:420px;object-fit:contain;background:#0d0f14"
+    />
+    <div style="display:none;align-items:center;justify-content:center;padding:24px;color:${C.muted};font-size:12px;flex-direction:column;gap:8px;background:#0d0f14">
+      <div>⚠ Afbeelding kan niet worden geladen</div>
+      <a href="${esc(url)}" target="_blank" style="color:${C.accent};font-size:12px">Openen in nieuw tabblad →</a>
+    </div>
+  </div>`;
+}
+
+function rerenderEmotions(){
+  const D=S.journalDraft;
+  const getArr=(key)=>{const v=D[key];if(!v)return[];return Array.isArray(v)?v:[v];};
+
+  const emoSel=(field)=>EMOTIONS.map(e=>{
+    const on=getArr(field).includes(e);
+    return`<button onclick="toggleEmo('${field}','${e}')" style="background:${on?C.accent+'22':'#0d0f14'};border:1px solid ${on?C.accent:C.border};border-radius:20px;padding:6px 12px;font-size:12px;color:${on?C.accent:C.sub};cursor:pointer;font-family:inherit;transition:all .15s">${esc(e)}</button>`;
+  }).join('');
+
+  const planSel=(val)=>PLAN_OPTIONS.map(o=>{
+    const active=val===o;
+    const col=o.includes('✅')?C.green:o.includes('⚠️')?'#f59e0b':C.red;
+    return`<button onclick="onI('j_inPlan','${o===val?'':o}');rerenderEmotions()" style="background:${active?col+'22':'#0d0f14'};border:1px solid ${active?col:C.border};border-radius:20px;padding:6px 14px;font-size:12px;color:${active?col:C.sub};cursor:pointer;font-family:inherit;transition:all .15s">${esc(o)}</button>`;
+  }).join('');
+
+  const eb=document.getElementById('emo_before');
+  const ed=document.getElementById('emo_during');
+  const ea=document.getElementById('emo_after');
+  const ps=document.getElementById('plan_sel');
+  if(eb)eb.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:8px">${emoSel('j_emotionBefore')}</div>`;
+  if(ed)ed.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:8px">${emoSel('j_emotionDuring')}</div>`;
+  if(ea)ea.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:8px">${emoSel('j_emotionAfter')}</div>`;
+  if(ps)ps.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap">${planSel(D.inPlan||'')}</div>`;
+}
+
+
+// ── CALENDAR ──────────────────────────────────────────────────────────────
+function renderCalendar(){
+  const m=S.calMonth,y=S.calYear;
+  const byDay={};
+  S.trades.filter(t=>!t.hidden&&isInDateRange(t.date,S.dateFilter)).forEach(t=>{if(!t.date)return;if(!byDay[t.date])byDay[t.date]=[];byDay[t.date].push(t);});
+  const first=new Date(y,m,1).getDay(),days=new Date(y,m+1,0).getDate();
+  let cells='';
+  for(let i=0;i<first;i++)cells+=`<div></div>`;
+  for(let d=1;d<=days;d++){
+    const k=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const ts=byDay[k];
+    const pnl=ts?ts.reduce((a,t)=>a+(t.pnl||0),0):null;
+    const bg=ts?(pnl>0?C.green+'22':pnl<0?C.red+'22':C.muted+'22'):'transparent';
+    const border=`1px solid ${ts?(pnl>0?C.green+'44':pnl<0?C.red+'44':C.border):C.border}`;
+    cells+=`<div style="min-height:68px;border-radius:9px;background:${bg};border:${border};padding:6px 8px">
+      <div style="font-size:11px;color:${C.sub};margin-bottom:4px">${d}</div>
+      ${ts?`<div style="font-size:11px;font-weight:700;color:${pnl>0?C.green:C.red}">${fmtD(pnl)}</div>
+      <div style="font-size:10px;color:${C.muted}">${ts.length} trade${ts.length>1?'s':''}</div>`:''}
+    </div>`;
+  }
+  return`
+    <div style="font-size:20px;font-weight:800;margin-bottom:18px">Kalender</div>
+    ${dateFilterBar()}
+    ${card(`
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+        ${btnG('&#8249;','calP()')}
+        <div style="font-weight:700;font-size:15px">${MONTHS[m]} ${y}</div>
+        ${btnG('&#8250;','calN()')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
+        ${['Zo','Ma','Di','Wo','Do','Vr','Za'].map(d=>`<div style="text-align:center;font-size:11px;color:${C.muted};padding-bottom:6px;font-weight:600">${d}</div>`).join('')}
+        ${cells}
+      </div>
+    `)}`;
+}
+function calP(){if(S.calMonth===0){S.calMonth=11;S.calYear--;}else S.calMonth--;render();}
+function calN(){if(S.calMonth===11){S.calMonth=0;S.calYear++;}else S.calMonth++;render();}
+
+// ── REPORTS ──────────────────────────────────────────────────────────────
+function renderReports(){
+  const ft=filteredTrades();
+  const s=getStats(ft);
+  const setupMap={},sessMap={},planMap={};
+  ft.filter(t=>t.pnl!==null&&t.pnl!==undefined).forEach(t=>{
+    if(!setupMap[t.setup])setupMap[t.setup]={w:0,n:0,p:0};
+    setupMap[t.setup].n++;if(t.pnl>0)setupMap[t.setup].w++;setupMap[t.setup].p+=t.pnl;
+    if(!sessMap[t.session])sessMap[t.session]={w:0,n:0,p:0};
+    sessMap[t.session].n++;if(t.pnl>0)sessMap[t.session].w++;sessMap[t.session].p+=t.pnl;
+    const plan=(t.journal&&t.journal.inPlan)||'Niet ingevuld';
+    if(!planMap[plan])planMap[plan]={w:0,n:0,p:0};
+    planMap[plan].n++;if(t.pnl>0)planMap[plan].w++;planMap[plan].p+=t.pnl;
+  });
+
+  // emotion frequency
+  const emoCount={};
+  ft.forEach(t=>{
+    const arr=t.journal&&Array.isArray(t.journal.j_emotionBefore)?t.journal.j_emotionBefore:(t.journal&&t.journal.emotionBefore?[t.journal.emotionBefore]:[]);
+    arr.forEach(e=>{emoCount[e]=(emoCount[e]||0)+1;});
+  });
+  const topEmo=Object.entries(emoCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const totalEmoTrades=ft.length||1;
+
+  const th=`padding:10px 14px;text-align:left;font-size:11px;color:${C.sub};text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid ${C.border}`;
+  const miniTable=(map,title)=>{
+    const rows=Object.entries(map).sort((a,b)=>b[1].p-a[1].p).map(([k,v])=>`
+      <tr style="border-bottom:1px solid ${C.border}">
+        <td style="padding:10px 14px;font-size:13px">${esc(k)}</td>
+        <td style="padding:10px 14px;color:${C.sub}">${v.n}</td>
+        <td style="padding:10px 14px;color:${C.green}">${v.n?Math.round(v.w/v.n*100):0}%</td>
+        <td style="padding:10px 14px;font-weight:700;color:${v.p>=0?C.green:C.red}">${fmtD(v.p)}</td>
+      </tr>`).join('');
+    return card(`<div style="font-size:13px;font-weight:700;margin-bottom:14px;color:${C.accent}">${title}</div>
+      <table><thead><tr>${['','Trades','Win%','P&L'].map(h=>`<th style="${th}">${h}</th>`).join('')}</tr></thead>
+      <tbody>${rows||`<tr><td colspan="4" style="color:${C.muted};padding:14px">Geen data</td></tr>`}</tbody></table>`);
+  };
+
+  return`
+    <div style="font-size:20px;font-weight:800;margin-bottom:18px">Rapporten</div>
+    ${dateFilterBar()}
+    <div style="display:flex;gap:14px;margin-bottom:22px;flex-wrap:wrap">
+      ${statBox('Profit Factor',s.pf?fmt(s.pf):'—',s.pf>=1?C.green:C.red)}
+      ${statBox('Gem. Winst',fmtD(s.wins.length?s.wins.reduce((a,t)=>a+t.pnl,0)/s.wins.length:0),C.green)}
+      ${statBox('Gem. Verlies',fmtD(s.losses.length?s.losses.reduce((a,t)=>a+t.pnl,0)/s.losses.length:0),C.red)}
+      ${statBox('Beste Trade',s.closed.length?fmtD(Math.max(...s.closed.map(t=>t.pnl))):'—')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      ${miniTable(setupMap,'Per Setup')}
+      ${miniTable(sessMap,'Per Sessie')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      ${miniTable(planMap,'In plan vs off plan')}
+      ${card(`<div style="font-size:13px;font-weight:700;margin-bottom:14px;color:${C.accent}">Meest voorkomende emotie (voor trade)</div>
+        ${topEmo.length?topEmo.map(([e,n])=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="flex:1;font-size:13px">${esc(e)}</div>
+          <div style="background:${C.accent}22;border-radius:99px;height:8px;flex:2;overflow:hidden"><div style="height:100%;width:${Math.round(n/totalEmoTrades*100)}%;background:${C.accent};border-radius:99px"></div></div>
+          <div style="font-size:12px;color:${C.sub};width:24px;text-align:right">${n}</div>
+        </div>`).join(''):`<div style="color:${C.muted}">Voeg emoties toe bij je trades</div>`}`)}
+    </div>`;
+}
+
+// ── IMPORT MODAL ──────────────────────────────────────────────────────────
+function renderImport(){
+  if(!S.showImport)return'';
+  let body='';
+  if(S.importStatus==='idle'){
+    body=`<label style="display:block;border:2px dashed ${C.border};border-radius:10px;padding:40px;text-align:center;cursor:pointer;transition:border-color .2s">
+      <div style="font-size:32px;margin-bottom:10px">📂</div>
+      <div style="color:${C.text};font-weight:700;margin-bottom:6px">Klik om CSV te uploaden</div>
+      <div style="color:${C.sub};font-size:12px">Tradovate Orders export (.csv)</div>
+      <input type="file" accept=".csv" style="display:none" onchange="handleCSV(this)"/>
+    </label>
+    <div style="background:#0d0f14;border-radius:8px;padding:14px 16px;margin-top:16px;font-size:12px;color:${C.sub};line-height:1.9">
+      <div style="color:${C.accent};font-weight:700;margin-bottom:6px">Hoe exporteer je uit Tradovate:</div>
+      <div>1. Open Tradovate → klik op je accountnaam</div>
+      <div>2. Klik op ⚙️ → <b style="color:${C.text}">Account Reports</b></div>
+      <div>3. Kies de <b style="color:${C.text}">Orders</b> tab (niet Performance)</div>
+      <div>4. Kies datumbereik → <b style="color:${C.text}">Download Report</b></div>
+    </div>`;
+  } else if(S.importStatus==='error'){
+    body=`<div style="background:${C.red}22;border:1px solid ${C.red}44;border-radius:8px;padding:16px;color:${C.red};margin-bottom:16px">⚠ ${esc(S.importError)}</div>
+    ${btnG('Opnieuw proberen','S.importStatus=\'idle\';render()')}`;
+  } else if(S.importStatus==='preview'){
+    const th2=`padding:8px 12px;text-align:left;color:${C.sub};border-bottom:1px solid ${C.border};font-size:10px;text-transform:uppercase`;
+    const rows=S.importParsed.map(t=>`<tr style="border-bottom:1px solid ${C.border}">
+      <td style="padding:8px 12px;color:${C.sub};font-size:12px">${esc(t.date)}</td>
+      <td style="padding:8px 12px">${tag(t.side,t.side==='Long'?C.green:C.red)}</td>
+      <td style="padding:8px 12px;font-size:12px">${t.contracts}c</td>
+      <td style="padding:8px 12px;font-size:12px;font-variant-numeric:tabular-nums">${esc(t.entry)}</td>
+      <td style="padding:8px 12px;font-size:12px;font-variant-numeric:tabular-nums">${esc(t.exit)}</td>
+      <td style="padding:8px 12px;font-weight:700;color:${t.pnl>=0?C.green:C.red}">${fmtD(t.pnl)}</td>
+    </tr>`).join('');
+    body=`<div style="background:${C.green}22;border:1px solid ${C.green}44;border-radius:8px;padding:14px;margin-bottom:16px">
+      <b style="color:${C.green}">${S.importParsed.length} nieuwe trades gevonden</b>
+      ${S.importDups>0?`<span style="color:${C.sub}"> · ${S.importDups} duplicaten overgeslagen</span>`:''}
+    </div>
+    <div style="max-height:260px;overflow-y:auto;margin-bottom:16px">
+      <table><thead><tr>${['Datum','Side','Qty','Entry','Exit','P&L'].map(h=>`<th style="${th2}">${h}</th>`).join('')}</tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>
+    <div style="color:${C.sub};font-size:12px;margin-bottom:16px">Na import kun je per trade een journal invullen via de Trade Log.</div>
+    <div style="display:flex;gap:10px">
+      ${btn(`Importeer ${S.importParsed.length} trades`,'doImport()')}
+      ${btnG('Ander bestand','S.importStatus=\'idle\';render()')}
+    </div>`;
+  }
+  return`<div style="position:fixed;inset:0;background:#000b;z-index:200;display:flex;align-items:center;justify-content:center">
+    <div style="background:${C.card};border:1px solid ${C.border};border-radius:12px;padding:24px 28px;width:560px;max-width:95vw;max-height:85vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div style="font-size:17px;font-weight:800">Tradovate CSV Importeren</div>
+        ${btnG('✕','closeImport()','padding:4px 10px')}
+      </div>
+      ${body}
+    </div>
+  </div>`;
+}
+
+// ── MAIN RENDER ──────────────────────────────────────────────────────────
+const PAGES=['Dashboard','Trades','Kalender','Rapporten'];
+const ICONS={Dashboard:'◼',Trades:'≡',Kalender:'▦',Rapporten:'↗'};
+
+function renderLoadingScreen(){
+  return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:${C.bg}">
+    <div class="spinner"></div>
+  </div>`;
+}
+
+function renderAuthScreen(){
+  const isSignup=S.authView==='signup';
+  return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:${C.bg};padding:20px">
+    <div style="width:100%;max-width:380px">
+      <div style="text-align:center;margin-bottom:28px">
+        <div style="font-size:11px;letter-spacing:.12em;color:${C.muted};text-transform:uppercase;margin-bottom:6px">MGC Futures</div>
+        <div style="font-size:22px;font-weight:900;color:${C.accent}">Trade Journal</div>
+      </div>
+      ${card(`
+        <div style="font-size:16px;font-weight:800;margin-bottom:18px">${isSignup?'Account aanmaken':'Inloggen'}</div>
+        ${S.authError?`<div style="background:${C.red}22;border:1px solid ${C.red}44;border-radius:8px;padding:12px 14px;color:${C.red};font-size:12px;margin-bottom:14px">${esc(S.authError)}</div>`:''}
+        <div style="margin-bottom:12px">
+          ${lbl('Email')}
+          <input id="auth_email" type="email" placeholder="jij@email.com" style="background:#0d0f14;border:1px solid ${C.border};border-radius:7px;padding:10px 12px;color:${C.text};font-size:13px;width:100%;outline:none;box-sizing:border-box" onkeydown="if(event.key==='Enter')submitAuth()"/>
+        </div>
+        <div style="margin-bottom:18px">
+          ${lbl('Wachtwoord')}
+          <input id="auth_password" type="password" placeholder="••••••••" style="background:#0d0f14;border:1px solid ${C.border};border-radius:7px;padding:10px 12px;color:${C.text};font-size:13px;width:100%;outline:none;box-sizing:border-box" onkeydown="if(event.key==='Enter')submitAuth()"/>
+        </div>
+        ${S.authLoading
+          ? `<div style="display:flex;justify-content:center;padding:10px"><div class="spinner" style="width:22px;height:22px"></div></div>`
+          : btn(isSignup?'Account aanmaken':'Inloggen','submitAuth()','width:100%;text-align:center')
+        }
+        <div style="text-align:center;margin-top:16px;font-size:12px;color:${C.sub}">
+          ${isSignup?'Heb je al een account?':'Nog geen account?'}
+          <a href="javascript:void(0)" onclick="toggleAuthView()" style="color:${C.accent}">${isSignup?'Inloggen':'Account aanmaken'}</a>
+        </div>
+      `)}
+    </div>
+  </div>`;
+}
+
+function toggleAuthView(){S.authView=S.authView==='login'?'signup':'login';S.authError='';render();}
+
+async function submitAuth(){
+  const email=document.getElementById('auth_email').value.trim();
+  const password=document.getElementById('auth_password').value;
+  if(!email||!password){S.authError='Vul email en wachtwoord in.';render();return;}
+  S.authLoading=true;S.authError='';render();
+  if(S.authView==='signup'){
+    const {data,error}=await sb.auth.signUp({email,password});
+    if(error){S.authError=error.message;S.authLoading=false;render();return;}
+    if(data.user&&!data.session){
+      S.authLoading=false;
+      S.authError='Account aangemaakt. Check je email om te bevestigen, of vraag de beheerder om "Auto Confirm" aan te zetten.';
+      render();
+      return;
+    }
+    S.user=data.user;
+  } else {
+    const {data,error}=await sb.auth.signInWithPassword({email,password});
+    if(error){S.authError=error.message;S.authLoading=false;render();return;}
+    S.user=data.user;
+  }
+  await loadTradesFromDB();
+  S.authLoading=false;
+  render();
+}
+
+async function logout(){
+  await sb.auth.signOut();
+  S.user=null;
+  S.trades=[];
+  S.page='Dashboard';
+  render();
+}
+
+function render(){
+  if(S.appLoading){
+    document.getElementById('app').innerHTML=renderLoadingScreen();
+    return;
+  }
+  if(!S.user){
+    document.getElementById('app').innerHTML=renderAuthScreen();
+    return;
+  }
+
+  let main='';
+  if(S.journalOpen)main=renderJournalView();
+  else if(S.showTradeForm)main=renderTradeForm();
+  else switch(S.page){
+    case'Dashboard':main=renderDashboard();break;
+    case'Trades':main=renderTrades();break;
+    case'Kalender':main=renderCalendar();break;
+    case'Rapporten':main=renderReports();break;
+  }
+  document.getElementById('app').innerHTML=`
+  <div style="min-height:100vh;background:${C.bg};color:${C.text};font-family:'Inter',system-ui,sans-serif;font-size:14px">
+    <!-- SIDEBAR -->
+    <div style="width:210px;min-height:100vh;background:${C.surface};border-right:1px solid ${C.border};display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:50;overflow:hidden">
+      <div style="padding:26px 20px 18px">
+        <div style="font-size:10px;letter-spacing:.12em;color:${C.muted};text-transform:uppercase;margin-bottom:4px">MGC Futures</div>
+        <div style="font-size:17px;font-weight:900;color:${C.accent}">Trade Journal</div>
+      </div>
+      <div style="flex:1;padding:6px 10px">
+        ${PAGES.map(p=>{const active=S.page===p&&!S.journalOpen&&!S.showTradeForm;return`<button onclick="nav('${p}')" style="display:flex;align-items:center;gap:10px;width:100%;background:${active?'#ffffff0d':'transparent'};border:none;border-radius:8px;padding:11px 12px;color:${active?C.text:C.sub};cursor:pointer;font-weight:${active?700:400};font-size:13px;text-align:left;margin-bottom:2px;font-family:inherit">
+          <span style="font-size:14px;opacity:.7">${ICONS[p]}</span>${p}
+        </button>`;}).join('')}
+      </div>
+      <div style="padding:14px 16px;border-top:1px solid ${C.border};display:flex;flex-direction:column;gap:7px">
+        ${S.saving?`<div style="text-align:center;font-size:11px;color:${C.accent};padding:4px">Opslaan...</div>`:''}
+        ${btn('+ Nieuwe Trade','openTradeForm()','width:100%;font-size:12px;padding:8px')}
+        <button onclick="dlBackup()" style="background:transparent;color:${C.sub};border:1px solid ${C.border};border-radius:7px;padding:7px;cursor:pointer;font-size:11px;font-family:inherit;width:100%">⬇ Backup downloaden</button>
+        <label style="display:block;background:transparent;color:${C.sub};border:1px solid ${C.border};border-radius:7px;padding:7px;cursor:pointer;font-size:11px;text-align:center;font-family:inherit">
+          ⬆ Backup importeren
+          <input type="file" accept=".json" style="display:none" onchange="restoreBackup(this)"/>
+        </label>
+      </div>
+      <div style="padding:10px 16px;border-top:1px solid ${C.border}">
+        <div style="font-size:11px;color:${C.sub};margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(S.user.email||'')}</div>
+        <button onclick="logout()" style="background:transparent;color:${C.muted};border:1px solid ${C.border};border-radius:7px;padding:6px;cursor:pointer;font-size:11px;font-family:inherit;width:100%">Uitloggen</button>
+      </div>
+      <div style="padding:8px 16px 14px;font-size:10px;color:${C.muted}">${S.trades.length} trades · cloud opgeslagen</div>
+    </div>
+    <!-- MAIN -->
+    <div style="margin-left:210px;padding:30px 36px;min-height:100vh">
+      ${S.syncError?`<div style="background:${C.red}22;border:1px solid ${C.red}44;border-radius:8px;padding:12px 16px;color:${C.red};font-size:12px;margin-bottom:18px">⚠ ${esc(S.syncError)}</div>`:''}
+      ${main}
+    </div>
+    ${renderImport()}
+  </div>`;
+}
+
+// ── ACTIONS ──────────────────────────────────────────────────────────────
+function nav(p){S.page=p;S.journalOpen=null;S.showTradeForm=false;S.editingTrade=null;render();}
+
+function openTradeForm(id){
+  if(id){
+    const t=S.trades.find(x=>x.id===id);
+    if(!t)return;
+    S.editingTrade=id;
+    S.tradeForm={...t};
+  } else {
+    S.editingTrade=null;
+    S.tradeForm={date:todayStr(),time:'',side:'Long',contracts:1,entry:'',sl:'',tp:'',exit:'',setup:'OTE Long',session:'New York',result:''};
+  }
+  S.showTradeForm=true;
+  S.journalOpen=null;
+  render();
+}
+function closeTradeForm(){S.showTradeForm=false;S.editingTrade=null;render();}
+
+async function saveTrade(){
+  const f=S.tradeForm;
+  if(!f.date||!f.entry)return alert('Datum en entry zijn verplicht.');
+  const pnl=f.exit?calcPnl(f.entry,f.exit,f.side,f.contracts):null;
+  const actual_r=f.exit?calcActualR(f.entry,f.sl,f.exit,f.side):null;
+  const planned_r=calcPlannedR(f.entry,f.sl,f.tp,f.side);
+  S.saving=true;render();
+  if(S.editingTrade){
+    const i=S.trades.findIndex(x=>x.id===S.editingTrade);
+    if(i>=0){
+      const updated={...S.trades[i],...f,pnl,actual_r,planned_r};
+      const saved=await dbUpdateTrade(S.editingTrade,updated);
+      if(saved)S.trades[i]=saved;
+    }
+  } else {
+    const draft={...f,id:uid(),pnl,actual_r,planned_r,journal:{}};
+    const saved=await dbInsertTrade(draft);
+    if(saved)S.trades.unshift(saved);
+  }
+  S.saving=false;
+  S.showTradeForm=false;
+  S.editingTrade=null;
+  render();
+}
+
+async function delTrade(id){
+  if(confirm('Trade verwijderen?')){
+    const ok=await dbDeleteTrade(id);
+    if(ok)S.trades=S.trades.filter(t=>t.id!==id);
+    render();
+  }
+}
+
+function openJournal(id){
+  const t=S.trades.find(x=>x.id===id);
+  if(!t)return;
+  S.journalOpen=id;
+  const j=t.journal||{};
+  // Convert old single-string emotion values to arrays
+  const toArr=(v)=>!v?[]:(Array.isArray(v)?v:[v]);
+  S.journalDraft={
+    ...j,
+    j_emotionBefore:toArr(j.j_emotionBefore||j.emotionBefore),
+    j_emotionDuring:toArr(j.j_emotionDuring||j.emotionDuring),
+    j_emotionAfter:toArr(j.j_emotionAfter||j.emotionAfter),
+  };
+  S.showTradeForm=false;
+  render();
+}
+function closeJournal(){S.journalOpen=null;S.journalDraft={};render();}
+
+async function saveJournal(){
+  const i=S.trades.findIndex(x=>x.id===S.journalOpen);
+  if(i<0)return;
+  const t=S.trades[i];
+  const realizedRR=calcJournalRR(S.journalDraft.riskAmount,t.pnl);
+  const updatedJournal={...S.journalDraft,realizedRR};
+  S.saving=true;render();
+  const updated={...t,journal:updatedJournal};
+  const saved=await dbUpdateTrade(t.id,updated);
+  if(saved)S.trades[i]=saved;
+  S.saving=false;
+  S.journalOpen=null;
+  S.journalDraft={};
+  render();
+}
+
+// CSV
+function openImport(){S.showImport=true;S.importStatus='idle';render();}
+function closeImport(){S.showImport=false;render();}
+function handleCSV(input){
+  const file=input.files[0];if(!file)return;
+  S.importStatus='parsing';render();
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const res=parseCSV(e.target.result);
+      const mk=t=>t.date+'_'+t.side+'_'+String(t.entry)+'_'+String(t.exit)+'_'+String(parseInt(t.contracts)||1);
+      // Build a set of all known keys, including original partial fills stored in merged trades
+      const exKeys=new Set();
+      S.trades.forEach(t=>{
+        exKeys.add(mk(t));
+        // Also add keys of original partials that were merged into this trade
+        if(t._mergedPartials){
+          t._mergedPartials.forEach(function(p){exKeys.add(mk(p));});
+        }
+      });
+      // Filter: skip any trade whose key exists, or whose entry+exit+date combo matches a known partial
+      const fresh=res.filter(function(t){
+        if(exKeys.has(mk(t)))return false;
+        // Extra check: same date+side+entry+exit regardless of contracts rounding
+        const dupMatch=S.trades.some(function(st){
+          if(!st._mergedPartials)return false;
+          return st._mergedPartials.some(function(p){
+            return p.date===t.date && p.side===t.side &&
+                   String(p.entry)===String(t.entry) &&
+                   String(p.exit)===String(t.exit);
+          });
+        });
+        return !dupMatch;
+      });
+      S.importDups=res.length-fresh.length;
+      S.importParsed=fresh;
+      S.importStatus='preview';
+    }catch(err){
+      S.importError=err.message;
+      S.importStatus='error';
+    }
+    render();
+  };
+  reader.readAsText(file);
+}
+async function doImport(){
+  S.importStatus='importing';render();
+  const toInsert=S.importParsed.map(t=>({...t,journal:{}}));
+  const saved=await dbBulkInsert(toInsert);
+  S.trades=[...saved,...S.trades];
+  S.showImport=false;
+  S.importStatus='idle';
+  render();
+}
+
+function parseCSV(text){
+  const lines=text.trim().split('\n').map(l=>l.trim()).filter(Boolean);
+  if(lines.length<2)throw new Error('CSV lijkt leeg of ongeldig.');
+  const hdrs=lines[0].split(',').map(h=>h.replace(/^"|"$/g,'').toLowerCase());
+  const col=(row,...names)=>{for(const n of names){const i=hdrs.findIndex(h=>h.includes(n.toLowerCase()));if(i>=0)return(row[i]||'').replace(/^"|"$/g,'').trim();}return'';};
+  const orders=[];
+  for(let i=1;i<lines.length;i++){
+    const row=lines[i].split(',').map(c=>c.replace(/^"|"$/g,'').trim());
+    if(!col(row,'status').toLowerCase().includes('filled'))continue;
+    const bs=col(row,'b/s','side','action');
+    const price=parseFloat(col(row,'avgprice','avg price','avg fill price','price'));
+    const qty=parseInt(col(row,'filledqty','filled qty','qty'));
+    const fillTime=col(row,'fill time','timestamp','date');
+    const contract=col(row,'contract','product');
+    if(!bs||!price||!qty)continue;
+    orders.push({bs:bs.toUpperCase(),contract,price,qty,fillTime});
+  }
+  if(!orders.length)throw new Error('Geen gevulde orders gevonden. Exporteer via de Orders tab, niet Performance.');
+  const byC={};
+  orders.forEach(o=>{const s=o.contract||'MGC';if(!byC[s])byC[s]=[];byC[s].push(o);});
+  const trades=[];
+  for(const[sym,ords]of Object.entries(byC)){
+    ords.sort((a,b)=>new Date(a.fillTime)-new Date(b.fillTime));
+    let oP=null,oQ=0,oS=null,oT=null;
+    for(const o of ords){
+      const buy=o.bs==='B'||o.bs==='BUY';
+      if(oQ===0){oP=o.price;oQ=o.qty;oS=buy?'Long':'Short';oT=o.fillTime;}
+      else{
+        const cQ=Math.min(oQ,o.qty),dir=oS==='Long'?1:-1;
+        const pnl=Math.round(dir*(o.price-oP)*10*cQ*100)/100;
+        let date=todayStr();
+        try{const d=new Date(oT||o.fillTime);date=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}catch(e){}
+        let session='Other';
+        try{const h=new Date(oT).getUTCHours();if(h>=2&&h<8)session='London';else if(h>=7&&h<9)session='London/NY Overlap';else if(h>=13&&h<20)session='New York';else if(h>=23||h<2)session='Asian';}catch(e){}
+        const actual_r=calcActualR(oP.toFixed(2),'',o.price.toFixed(2),oS);
+        let tradeTime='';
+        try{const d=new Date(oT||o.fillTime);tradeTime=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}catch(e){}
+        trades.push({id:uid(),date,time:tradeTime,side:oS,contracts:cQ,entry:oP.toFixed(2),sl:'',tp:'',exit:o.price.toFixed(2),setup:'OTE '+oS,session,pnl,actual_r,planned_r:null,journal:{}});
+        oQ-=cQ;if(oQ===0){oP=null;oS=null;oT=null;}
+      }
+    }
+  }
+  return trades;
+}
+
+// Backup
+function dlBackup(){
+  const d=JSON.stringify({version:2,exportedAt:new Date().toISOString(),trades:S.trades},null,2);
+  const a=document.createElement('a');
+  a.href='data:application/json;charset=utf-8,'+encodeURIComponent(d);
+  a.download=`mgc-journal-backup-${todayStr()}.json`;
+  a.click();
+}
+function restoreBackup(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async(e)=>{
+    try{
+      const p=JSON.parse(e.target.result);
+      const r=p.trades||p;
+      if(!Array.isArray(r))throw new Error('Ongeldig');
+      if(!confirm(`${r.length} trades importeren naar je account? Dit voegt ze toe aan je bestaande trades (geen overschrijving).`)){
+        input.value='';return;
+      }
+      S.saving=true;render();
+      // Strip old local ids so Supabase generates fresh ones, avoiding collisions
+      const toInsert=r.map(t=>{const {id,...rest}=t;return rest;});
+      const saved=await dbBulkInsert(toInsert);
+      S.trades=[...saved,...S.trades];
+      S.saving=false;
+      render();
+    }catch(e){alert('Ongeldig backup bestand.');S.saving=false;render();}
+    input.value='';
+  };
+  reader.readAsText(file);
+}
+
+// Quote rotation
+setInterval(()=>{S.quoteIdx=(S.quoteIdx+1)%QUOTES.length;render();},30000);
+
+function toggleSel(id){
+  if(S.selected.has(id))S.selected.delete(id);
+  else S.selected.add(id);
+  render();
+}
+function toggleAll(){
+  const visible=S.trades.filter(t=>S.showHidden?t.hidden:!t.hidden).map(t=>t.id);
+  const allSel=visible.every(id=>S.selected.has(id));
+  if(allSel)visible.forEach(id=>S.selected.delete(id));
+  else visible.forEach(id=>S.selected.add(id));
+  render();
+}
+async function hideSelected(){
+  if(!S.selected.size)return;
+  const action=S.showHidden?'zichtbaar maken':'verbergen';
+  if(!confirm(`${S.selected.size} trades ${action}?`))return;
+  const ids=[...S.selected];
+  const newHidden=!S.showHidden;
+  S.saving=true;render();
+  for(const id of ids){
+    const t=S.trades.find(x=>x.id===id);
+    if(t){
+      const updated={...t,hidden:newHidden};
+      const saved=await dbUpdateTrade(id,updated);
+      if(saved){const idx=S.trades.findIndex(x=>x.id===id);if(idx>=0)S.trades[idx]=saved;}
+    }
+  }
+  S.selected=new Set();
+  S.saving=false;
+  render();
+}
+async function deleteSelected(){
+  if(!S.selected.size)return;
+  if(!confirm(`${S.selected.size} trades definitief verwijderen?`))return;
+  const ids=[...S.selected];
+  S.saving=true;render();
+  const ok=await dbDeleteTrades(ids);
+  if(ok)S.trades=S.trades.filter(t=>!S.selected.has(t.id));
+  S.selected=new Set();
+  S.saving=false;
+  render();
+}
+async function mergeSelected(){
+  const ids=[...S.selected];
+  if(ids.length<2)return alert('Selecteer minimaal 2 trades om samen te voegen.');
+
+  const trades=S.trades.filter(t=>ids.includes(t.id));
+
+  // Validate: all must have same side and entry
+  const sides=[...new Set(trades.map(t=>t.side))];
+  const entries=[...new Set(trades.map(t=>t.entry))];
+  if(sides.length>1){
+    return alert('Kan niet samenvoegen: trades hebben verschillende richtingen (Long/Short).');
+  }
+  if(entries.length>1){
+    const ok=confirm(`Let op: de trades hebben verschillende entry prijzen (${entries.join(', ')}). Toch samenvoegen met gewogen gemiddelde?`);
+    if(!ok)return;
+  }
+
+  // Calculate totals
+  const totalContracts=trades.reduce((a,t)=>a+(parseInt(t.contracts)||1),0);
+
+  // Weighted average exit price
+  const totalExitValue=trades.reduce((a,t)=>{
+    const c=parseInt(t.contracts)||1;
+    const x=parseFloat(t.exit)||0;
+    return a+(x*c);
+  },0);
+  const avgExit=totalExitValue/totalContracts;
+
+  // Weighted average entry price
+  const totalEntryValue=trades.reduce((a,t)=>{
+    const c=parseInt(t.contracts)||1;
+    const e=parseFloat(t.entry)||0;
+    return a+(e*c);
+  },0);
+  const avgEntry=totalEntryValue/totalContracts;
+
+  // Total P&L (sum of all partials)
+  const totalPnl=trades.reduce((a,t)=>a+(t.pnl||0),0);
+
+  // Actual R based on merged entry/exit and first SL found
+  const sl=trades.find(t=>t.sl)?.sl||'';
+  const actual_r=sl?calcActualR(avgEntry.toFixed(2),sl,avgExit.toFixed(2),trades[0].side):null;
+
+  // Use earliest date/time
+  const sorted=[...trades].sort((a,b)=>{
+    const da=(a.date||'')+(a.time||'');
+    const db=(b.date||'')+(b.time||'');
+    return da.localeCompare(db);
+  });
+  const first=sorted[0];
+
+  // Merge journals: combine notes
+  const journalParts=trades.filter(t=>t.journal).map((t,i)=>{
+    const j=t.journal;
+    const parts=[];
+    if(j.confluences)parts.push(j.confluences);
+    if(j.wentWell)parts.push('Goed: '+j.wentWell);
+    if(j.wentWrong)parts.push('Fout: '+j.wentWrong);
+    return parts.length?`[Partial ${i+1}] `+parts.join(' | '):'';
+  }).filter(Boolean);
+
+  // Build merged trade
+  const merged={
+    id:uid(),
+    date:first.date,
+    time:first.time||'',
+    side:first.side,
+    contracts:totalContracts,
+    entry:avgEntry.toFixed(2),
+    sl,
+    tp:trades.find(t=>t.tp)?.tp||'',
+    exit:avgExit.toFixed(2),
+    setup:first.setup,
+    session:first.session,
+    pnl:Math.round(totalPnl*100)/100,
+    actual_r,
+    journal:{
+      ...first.journal||{},
+      confluences:(first.journal&&first.journal.confluences?first.journal.confluences+' ':'')+'[Samengevoegd uit '+trades.length+' partials: '+trades.map(function(t){return (t.contracts||1)+'c @ '+t.exit;}).join(', ')+']',
+      wentWell:journalParts.length?journalParts.join(' | '):(first.journal&&first.journal.wentWell?first.journal.wentWell:''),
+    },
+    _merged:true,
+    _mergedFrom:ids,
+    _mergedPartials:trades.map(function(t){return {date:t.date,side:t.side,entry:String(t.entry),exit:String(t.exit),contracts:t.contracts};}),
+  };
+
+
+
+
+
+
+
+
+  const tradeLines=trades.map(function(t){return '- '+t.date+(t.time?' '+t.time:'')+' | '+(t.contracts||1)+'c @ entry '+t.entry+' exit '+t.exit+' | '+fmtD(t.pnl);}).join('\n');
+  const preview='Samenvoegen van '+trades.length+' trades:\n\n'+tradeLines+'\n\nResultaat:\n  Contracts: '+totalContracts+'c\n  Gem. entry: '+avgEntry.toFixed(2)+'\n  Gem. exit: '+avgExit.toFixed(2)+'\n  Totaal P&L: '+fmtD(totalPnl)+(actual_r?'\n  Actual R: '+actual_r+'R':'')+'\n\nDe originele '+trades.length+' trades worden verwijderd.';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  if(!confirm(preview))return;
+
+  S.saving=true;render();
+
+  // Insert the merged trade first, then delete the originals
+  const savedMerged=await dbInsertTrade(merged);
+  if(!savedMerged){S.saving=false;render();return;}
+
+  const delOk=await dbDeleteTrades(ids);
+
+  const firstIdx=Math.min(...ids.map(id=>S.trades.findIndex(t=>t.id===id)));
+  S.trades=S.trades.filter(t=>!ids.includes(t.id));
+  S.trades.splice(firstIdx,0,savedMerged);
+  S.selected=new Set();
+  S.saving=false;
+  render();
+}
+
+function sortBy(col){
+  if(S.sort.col===col){S.sort.dir*=-1;}
+  else{S.sort.col=col;S.sort.dir=-1;}
+  render();
+}
+
+// Boot — show loading spinner immediately, then check session
+render();
+loadState();
+
+// Keep app in sync if the user logs in/out in another tab
+sb.auth.onAuthStateChange((event,session)=>{
+  if(event==='SIGNED_OUT'){
+    S.user=null;S.trades=[];render();
+  }
+});
+</script>
+</body>
+</html>
