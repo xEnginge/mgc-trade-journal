@@ -1194,7 +1194,7 @@ function render(){
     <div style="width:${sbWidth}px;min-height:100vh;background:${C.surface};border-right:1px solid ${C.border};display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:50;overflow:hidden;transition:width .18s ease">
 
       <!-- Collapse/expand toggle -->
-      <button onclick="toggleSidebar()" title="${collapsed?'Menu uitklappen':'Menu inklappen'}" style="position:absolute;top:18px;right:${collapsed?'-12px':'-12px'};width:24px;height:24px;border-radius:50%;background:${C.card};border:1px solid ${C.border};color:${C.sub};cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;z-index:60;font-family:inherit">${collapsed?'›':'‹'}</button>
+      <button onclick="toggleSidebar()" title="${collapsed?'Menu uitklappen':'Menu inklappen'}" onmouseover="this.style.background='#ffd34d';this.style.transform='scale(1.1)'" onmouseout="this.style.background='${C.accent}';this.style.transform='scale(1)'" style="position:absolute;top:22px;right:-13px;width:28px;height:28px;border-radius:50%;background:${C.accent};border:2px solid ${C.bg};color:#000;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;z-index:60;font-family:inherit;box-shadow:0 2px 8px rgba(0,0,0,0.4);transition:transform .15s ease, background .15s ease">${collapsed?'›':'‹'}</button>
 
       <div style="padding:${collapsed?'26px 0 18px':'26px 20px 18px'};text-align:${collapsed?'center':'left'};overflow:hidden">
         ${collapsed
