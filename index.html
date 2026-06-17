@@ -41,7 +41,7 @@ const SETUPS=['OTE Long','OTE Short','OB Bounce','FVG Fill','Liquidity Sweep','B
 const SESSIONS=['London','New York','London/NY Overlap','Asian','Other'];
 const EMOTIONS=['😌 Calm','💪 Confident','😰 Hesitant','😤 FOMO','😠 Revenge','😐 Bored','🎯 Focused','😟 Anxious','😴 Tired'];
 const PLAN_OPTIONS=['✅ Fully in plan','⚠️ Mostly in plan','❌ Off plan'];
-const QUOTES=[
+const QUOTES_ISLAMIC=[
   {text:"And whoever relies upon Allah — then He is sufficient for him.",source:"Quran 65:3"},
   {text:"Verily, with hardship comes ease.",source:"Quran 94:6"},
   {text:"Allah does not burden a soul beyond that it can bear.",source:"Quran 2:286"},
@@ -69,11 +69,40 @@ const QUOTES=[
   {text:"So remember Me; I will remember you. And be grateful to Me and do not deny Me.",source:"Quran 2:152"},
 ];
 
+const QUOTES_STOIC=[
+  {text:"You have power over your mind, not outside events. Realize this, and you will find strength.",source:"Marcus Aurelius"},
+  {text:"Waste no more time arguing about what a good man should be. Be one.",source:"Marcus Aurelius"},
+  {text:"The impediment to action advances action. What stands in the way becomes the way.",source:"Marcus Aurelius"},
+  {text:"If it is not right, do not do it; if it is not true, do not say it.",source:"Marcus Aurelius"},
+  {text:"He who is not afraid of death has no fear at all.",source:"Marcus Aurelius"},
+  {text:"It is not the man who has too little, but the man who craves more, that is poor.",source:"Seneca"},
+  {text:"We suffer more often in imagination than in reality.",source:"Seneca"},
+  {text:"Luck is what happens when preparation meets opportunity.",source:"Seneca"},
+  {text:"He suffers more than necessary, who suffers before it is necessary.",source:"Seneca"},
+  {text:"Difficulties strengthen the mind, as labor does the body.",source:"Seneca"},
+  {text:"If you want to improve, be content to be thought foolish and stupid.",source:"Epictetus"},
+  {text:"It's not what happens to you, but how you react to it that matters.",source:"Epictetus"},
+  {text:"No man is free who is not master of himself.",source:"Epictetus"},
+  {text:"Wealth consists not in having great possessions, but in having few wants.",source:"Epictetus"},
+  {text:"First say to yourself what you would be; and then do what you have to do.",source:"Epictetus"},
+  {text:"Man is disturbed not by events, but by his opinion about events.",source:"Epictetus"},
+  {text:"He who has learned how to die has unlearned how to be a slave.",source:"Seneca"},
+  {text:"The whole future lies in uncertainty: live immediately.",source:"Seneca"},
+  {text:"Confine yourself to the present.",source:"Marcus Aurelius"},
+  {text:"How much more grievous are the consequences of anger than the causes of it.",source:"Marcus Aurelius"},
+  {text:"Don't explain your philosophy. Embody it.",source:"Epictetus"},
+  {text:"You are an actor in a play, which the playwright has chosen.",source:"Epictetus"},
+  {text:"Begin at once to live, and count each separate day as a separate life.",source:"Seneca"},
+  {text:"Be tolerant with others and strict with yourself.",source:"Marcus Aurelius"},
+  {text:"Every new beginning comes from some other beginning's end.",source:"Seneca"},
+];
+
 // ── STATE ──────────────────────────────────────────────────────────────────
 const S={
   page:'Dashboard',
   trades:[],
-  quoteIdx:Math.floor(Math.random()*QUOTES.length),
+  quoteSource:'islamic', // 'islamic' | 'stoic'
+  quoteIdx:Math.floor(Math.random()*QUOTES_ISLAMIC.length),
   calMonth:new Date().getMonth(),
   calYear:new Date().getFullYear(),
   showImport:false,
@@ -333,10 +362,24 @@ function dateFilterBar(){
 }
 function setDateFilter(val){S.dateFilter=val;render();}
 
+function currentQuotes(){
+  return S.quoteSource==='stoic'?QUOTES_STOIC:QUOTES_ISLAMIC;
+}
+function setQuoteSource(src){
+  S.quoteSource=src;
+  S.quoteIdx=0;
+  render();
+}
+
 function renderQuote(){
-  const q=QUOTES[S.quoteIdx];
+  const list=currentQuotes();
+  const q=list[S.quoteIdx]||list[0];
   return `<div style="background:linear-gradient(135deg,#13161e,#1a1f2e);border:1px solid ${C.accent}33;border-radius:12px;padding:22px 26px;margin-bottom:24px;position:relative;overflow:hidden">
     <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,${C.accent},transparent)"></div>
+    <div style="display:flex;justify-content:center;gap:6px;margin-bottom:14px">
+      <button onclick="setQuoteSource('islamic')" style="background:${S.quoteSource==='islamic'?C.accent+'22':'transparent'};color:${S.quoteSource==='islamic'?C.accent:C.muted};border:1px solid ${S.quoteSource==='islamic'?C.accent:C.border};border-radius:99px;padding:4px 12px;cursor:pointer;font-size:11px;font-weight:${S.quoteSource==='islamic'?700:400};font-family:inherit">Islamic</button>
+      <button onclick="setQuoteSource('stoic')" style="background:${S.quoteSource==='stoic'?C.accent+'22':'transparent'};color:${S.quoteSource==='stoic'?C.accent:C.muted};border:1px solid ${S.quoteSource==='stoic'?C.accent:C.border};border-radius:99px;padding:4px 12px;cursor:pointer;font-size:11px;font-weight:${S.quoteSource==='stoic'?700:400};font-family:inherit">Stoic</button>
+    </div>
     <div style="display:flex;align-items:center;gap:12px">
       <button onclick="prevQ()" style="background:none;border:none;color:${C.muted};cursor:pointer;font-size:22px;padding:0 6px;line-height:1">&#8249;</button>
       <div style="flex:1;text-align:center;padding:8px 0">
@@ -347,12 +390,12 @@ function renderQuote(){
       <button onclick="nextQ()" style="background:none;border:none;color:${C.muted};cursor:pointer;font-size:22px;padding:0 6px;line-height:1">&#8250;</button>
     </div>
     <div style="display:flex;justify-content:center;gap:4px;margin-top:14px">
-      ${QUOTES.map((_,i)=>`<div onclick="goQ(${i})" style="width:${i===S.quoteIdx?14:4}px;height:4px;border-radius:99px;background:${i===S.quoteIdx?C.accent:C.border};cursor:pointer;transition:all .3s"></div>`).join('')}
+      ${list.map((_,i)=>`<div onclick="goQ(${i})" style="width:${i===S.quoteIdx?14:4}px;height:4px;border-radius:99px;background:${i===S.quoteIdx?C.accent:C.border};cursor:pointer;transition:all .3s"></div>`).join('')}
     </div>
   </div>`;
 }
-function prevQ(){S.quoteIdx=(S.quoteIdx-1+QUOTES.length)%QUOTES.length;render();}
-function nextQ(){S.quoteIdx=(S.quoteIdx+1)%QUOTES.length;render();}
+function prevQ(){const n=currentQuotes().length;S.quoteIdx=(S.quoteIdx-1+n)%n;render();}
+function nextQ(){const n=currentQuotes().length;S.quoteIdx=(S.quoteIdx+1)%n;render();}
 function goQ(i){S.quoteIdx=i;render();}
 
 // ── EQUITY LINE ──────────────────────────────────────────────────────────
@@ -1248,7 +1291,7 @@ function restoreBackup(input){
 }
 
 // Quote rotation
-setInterval(()=>{S.quoteIdx=(S.quoteIdx+1)%QUOTES.length;render();},30000);
+setInterval(()=>{const n=currentQuotes().length;S.quoteIdx=(S.quoteIdx+1)%n;render();},30000);
 
 function toggleSel(id){
   if(S.selected.has(id))S.selected.delete(id);
