@@ -129,7 +129,6 @@ const S={
   saving:false,
   sharedView:false,
   sharedTrade:null,
-  sidebarCollapsed:(localStorage.getItem('mgc_sidebar_collapsed')==='1'),
 };
 
 // ── SUPABASE DATA LAYER ──────────────────────────────────────────────────
@@ -1185,67 +1184,36 @@ function render(){
     case'Kalender':main=renderCalendar();break;
     case'Rapporten':main=renderReports();break;
   }
-  const collapsed=S.sidebarCollapsed;
-  const sbWidth=collapsed?64:210;
-
   document.getElementById('app').innerHTML=`
   <div style="min-height:100vh;background:${C.bg};color:${C.text};font-family:'Inter',system-ui,sans-serif;font-size:14px">
     <!-- SIDEBAR -->
-    <div style="width:${sbWidth}px;min-height:100vh;background:${C.surface};border-right:1px solid ${C.border};display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:50;overflow:hidden;transition:width .18s ease">
-
-      <!-- Collapse/expand toggle -->
-      <button onclick="toggleSidebar()" title="${collapsed?'Menu uitklappen':'Menu inklappen'}" onmouseover="this.style.background='#ffd34d';this.style.transform='scale(1.1)'" onmouseout="this.style.background='${C.accent}';this.style.transform='scale(1)'" style="position:absolute;top:22px;right:-13px;width:28px;height:28px;border-radius:50%;background:${C.accent};border:2px solid ${C.bg};color:#000;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;z-index:60;font-family:inherit;box-shadow:0 2px 8px rgba(0,0,0,0.4);transition:transform .15s ease, background .15s ease">${collapsed?'›':'‹'}</button>
-
-      <div style="padding:${collapsed?'26px 0 18px':'26px 20px 18px'};text-align:${collapsed?'center':'left'};overflow:hidden">
-        ${collapsed
-          ? `<div style="font-size:17px;font-weight:900;color:${C.accent}">MGC</div>`
-          : `<div style="font-size:10px;letter-spacing:.12em;color:${C.muted};text-transform:uppercase;margin-bottom:4px">MGC Futures</div>
-             <div style="font-size:17px;font-weight:900;color:${C.accent}">Trade Journal</div>`
-        }
+    <div style="width:210px;min-height:100vh;background:${C.surface};border-right:1px solid ${C.border};display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:50;overflow:hidden">
+      <div style="padding:26px 20px 18px">
+        <div style="font-size:10px;letter-spacing:.12em;color:${C.muted};text-transform:uppercase;margin-bottom:4px">MGC Futures</div>
+        <div style="font-size:17px;font-weight:900;color:${C.accent}">Trade Journal</div>
       </div>
-
-      <div style="flex:1;padding:${collapsed?'6px 8px':'6px 10px'}">
-        ${PAGES.map(p=>{
-          const active=S.page===p&&!S.journalOpen&&!S.showTradeForm;
-          return collapsed
-            ? `<button onclick="nav('${p}')" title="${p}" style="display:flex;align-items:center;justify-content:center;width:100%;background:${active?'#ffffff0d':'transparent'};border:none;border-radius:8px;padding:12px 0;color:${active?C.text:C.sub};cursor:pointer;margin-bottom:2px;font-size:16px;font-family:inherit">${ICONS[p]}</button>`
-            : `<button onclick="nav('${p}')" style="display:flex;align-items:center;gap:10px;width:100%;background:${active?'#ffffff0d':'transparent'};border:none;border-radius:8px;padding:11px 12px;color:${active?C.text:C.sub};cursor:pointer;font-weight:${active?700:400};font-size:13px;text-align:left;margin-bottom:2px;font-family:inherit">
-                <span style="font-size:14px;opacity:.7">${ICONS[p]}</span>${p}
-              </button>`;
-        }).join('')}
+      <div style="flex:1;padding:6px 10px">
+        ${PAGES.map(p=>{const active=S.page===p&&!S.journalOpen&&!S.showTradeForm;return`<button onclick="nav('${p}')" style="display:flex;align-items:center;gap:10px;width:100%;background:${active?'#ffffff0d':'transparent'};border:none;border-radius:8px;padding:11px 12px;color:${active?C.text:C.sub};cursor:pointer;font-weight:${active?700:400};font-size:13px;text-align:left;margin-bottom:2px;font-family:inherit">
+          <span style="font-size:14px;opacity:.7">${ICONS[p]}</span>${p}
+        </button>`;}).join('')}
       </div>
-
-      <div style="padding:${collapsed?'14px 8px':'14px 16px'};border-top:1px solid ${C.border};display:flex;flex-direction:column;gap:7px">
-        ${S.saving?(collapsed?`<div style="text-align:center;font-size:10px;color:${C.accent}">⏳</div>`:`<div style="text-align:center;font-size:11px;color:${C.accent};padding:4px">Opslaan...</div>`):''}
-        ${collapsed
-          ? `<button onclick="openTradeForm()" title="Nieuwe Trade" style="background:${C.accent};color:#000;border:none;border-radius:7px;padding:9px 0;font-weight:700;cursor:pointer;font-size:15px;width:100%">+</button>`
-          : btn('+ Nieuwe Trade','openTradeForm()','width:100%;font-size:12px;padding:8px')
-        }
-        ${collapsed
-          ? `<button onclick="dlBackup()" title="Backup downloaden" style="background:transparent;color:${C.sub};border:1px solid ${C.border};border-radius:7px;padding:7px 0;cursor:pointer;font-size:13px;font-family:inherit;width:100%">⬇</button>`
-          : `<button onclick="dlBackup()" style="background:transparent;color:${C.sub};border:1px solid ${C.border};border-radius:7px;padding:7px;cursor:pointer;font-size:11px;font-family:inherit;width:100%">⬇ Backup downloaden</button>`
-        }
-        ${collapsed
-          ? `<label title="Backup importeren" style="display:block;background:transparent;color:${C.sub};border:1px solid ${C.border};border-radius:7px;padding:7px 0;cursor:pointer;font-size:13px;text-align:center;font-family:inherit">⬆<input type="file" accept=".json" style="display:none" onchange="restoreBackup(this)"/></label>`
-          : `<label style="display:block;background:transparent;color:${C.sub};border:1px solid ${C.border};border-radius:7px;padding:7px;cursor:pointer;font-size:11px;text-align:center;font-family:inherit">
-              ⬆ Backup importeren
-              <input type="file" accept=".json" style="display:none" onchange="restoreBackup(this)"/>
-            </label>`
-        }
+      <div style="padding:14px 16px;border-top:1px solid ${C.border};display:flex;flex-direction:column;gap:7px">
+        ${S.saving?`<div style="text-align:center;font-size:11px;color:${C.accent};padding:4px">Opslaan...</div>`:''}
+        ${btn('+ Nieuwe Trade','openTradeForm()','width:100%;font-size:12px;padding:8px')}
+        <button onclick="dlBackup()" style="background:transparent;color:${C.sub};border:1px solid ${C.border};border-radius:7px;padding:7px;cursor:pointer;font-size:11px;font-family:inherit;width:100%">⬇ Backup downloaden</button>
+        <label style="display:block;background:transparent;color:${C.sub};border:1px solid ${C.border};border-radius:7px;padding:7px;cursor:pointer;font-size:11px;text-align:center;font-family:inherit">
+          ⬆ Backup importeren
+          <input type="file" accept=".json" style="display:none" onchange="restoreBackup(this)"/>
+        </label>
       </div>
-
-      <div style="padding:${collapsed?'10px 8px':'10px 16px'};border-top:1px solid ${C.border}">
-        ${collapsed
-          ? `<button onclick="logout()" title="Uitloggen (${esc(S.user.email||'')})" style="background:transparent;color:${C.muted};border:1px solid ${C.border};border-radius:7px;padding:6px 0;cursor:pointer;font-size:13px;font-family:inherit;width:100%">⎋</button>`
-          : `<div style="font-size:11px;color:${C.sub};margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(S.user.email||'')}</div>
-             <button onclick="logout()" style="background:transparent;color:${C.muted};border:1px solid ${C.border};border-radius:7px;padding:6px;cursor:pointer;font-size:11px;font-family:inherit;width:100%">Uitloggen</button>`
-        }
+      <div style="padding:10px 16px;border-top:1px solid ${C.border}">
+        <div style="font-size:11px;color:${C.sub};margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(S.user.email||'')}</div>
+        <button onclick="logout()" style="background:transparent;color:${C.muted};border:1px solid ${C.border};border-radius:7px;padding:6px;cursor:pointer;font-size:11px;font-family:inherit;width:100%">Uitloggen</button>
       </div>
-
-      ${collapsed?'':`<div style="padding:8px 16px 14px;font-size:10px;color:${C.muted}">${S.trades.length} trades · cloud opgeslagen</div>`}
+      <div style="padding:8px 16px 14px;font-size:10px;color:${C.muted}">${S.trades.length} trades · cloud opgeslagen</div>
     </div>
     <!-- MAIN -->
-    <div style="margin-left:${sbWidth}px;padding:30px 36px;min-height:100vh;transition:margin-left .18s ease">
+    <div style="margin-left:210px;padding:30px 36px;min-height:100vh">
       ${S.syncError?`<div style="background:${C.red}22;border:1px solid ${C.red}44;border-radius:8px;padding:12px 16px;color:${C.red};font-size:12px;margin-bottom:18px">⚠ ${esc(S.syncError)}</div>`:''}
       ${main}
     </div>
@@ -1255,12 +1223,6 @@ function render(){
 
 // ── ACTIONS ──────────────────────────────────────────────────────────────
 function nav(p){S.page=p;S.journalOpen=null;S.showTradeForm=false;S.editingTrade=null;render();}
-
-function toggleSidebar(){
-  S.sidebarCollapsed=!S.sidebarCollapsed;
-  localStorage.setItem('mgc_sidebar_collapsed',S.sidebarCollapsed?'1':'0');
-  render();
-}
 
 function openTradeForm(id){
   if(id){
