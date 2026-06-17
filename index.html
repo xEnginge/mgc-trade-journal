@@ -127,6 +127,8 @@ const S={
   appLoading:true,
   syncError:'',
   saving:false,
+  sharedView:false,
+  sharedTrade:null,
 };
 
 // ── SUPABASE DATA LAYER ──────────────────────────────────────────────────
@@ -150,6 +152,7 @@ function rowToTrade(r){
     hidden:!!r.hidden,
     journal:r.journal||{},
     _mergedPartials:r.merged_partials||undefined,
+    shareId:r.share_id||null,
   };
 }
 
@@ -177,6 +180,19 @@ function tradeToRow(t){
 
 async function loadState(){
   S.appLoading=true;
+
+  // Check for a public share link first — this bypasses login entirely
+  const params=new URLSearchParams(window.location.search);
+  const shareId=params.get('share');
+  if(shareId){
+    const shared=await fetchSharedTrade(shareId);
+    S.appLoading=false;
+    S.sharedView=true;
+    S.sharedTrade=shared;
+    render();
+    return;
+  }
+
   const {data:{session}}=await sb.auth.getSession();
   if(session&&session.user){
     S.user=session.user;
@@ -239,6 +255,27 @@ async function dbBulkInsert(trades){
   const {data,error}=await sb.from('trades').insert(rows).select();
   if(error){alert('Import mislukt: '+error.message);return [];}
   return (data||[]).map(rowToTrade);
+}
+
+function generateShareId(){
+  // Random URL-safe code, long enough to be unguessable
+  const chars='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let out='';
+  for(let i=0;i<22;i++)out+=chars[Math.floor(Math.random()*chars.length)];
+  return out;
+}
+
+async function dbSetShareId(tradeId,shareId){
+  const {data,error}=await sb.from('trades').update({share_id:shareId}).eq('id',tradeId).select().single();
+  if(error){alert('Delen mislukt: '+error.message);return null;}
+  return rowToTrade(data);
+}
+
+// Fetch a single trade by share_id — works without login (public RLS policy)
+async function fetchSharedTrade(shareId){
+  const {data,error}=await sb.from('trades').select('*').eq('share_id',shareId).single();
+  if(error||!data)return null;
+  return rowToTrade(data);
 }
 
 // ── CALCS ──────────────────────────────────────────────────────────────────
@@ -644,11 +681,23 @@ function renderJournalView(){
 
   const ta=(id,val,ph)=>`<textarea id="${id}" oninput="onI('${id}',this.value)" style="background:#0d0f14;border:1px solid ${C.border};border-radius:8px;padding:11px 14px;color:${C.text};font-size:13px;width:100%;outline:none;box-sizing:border-box;height:90px;resize:vertical;font-family:inherit;line-height:1.6" placeholder="${esc(ph)}">${esc(val)}</textarea>`;
 
+  const shareUrl=t.shareId?(window.location.origin+window.location.pathname+'?share='+t.shareId):null;
+
   return`
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px;flex-wrap:wrap">
       ${btnG('← Terug','closeJournal()','font-size:12px;padding:6px 12px')}
-      <div style="font-size:20px;font-weight:800">Trade Journal</div>
+      <div style="font-size:20px;font-weight:800;flex:1">Trade Journal</div>
+      ${t.shareId
+        ? btnG('🔗 Link kopiëren',`copyShareLink('${shareUrl}')`,`font-size:12px;padding:6px 12px;color:${C.accent};border-color:${C.accent}66`)
+        : btnG('🔗 Deel deze trade',`shareTrade('${t.id}')`,'font-size:12px;padding:6px 12px')
+      }
     </div>
+
+    ${t.shareId?`<div id="share_link_box" style="background:${C.accent}11;border:1px solid ${C.accent}44;border-radius:9px;padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-size:12px;color:${C.accent};font-weight:700">Gedeeld:</div>
+      <div style="font-size:12px;color:${C.sub};flex:1;word-break:break-all">${esc(shareUrl)}</div>
+      ${btnG('Kopiëren',`copyShareLink('${shareUrl}')`,'font-size:11px;padding:5px 10px')}
+    </div>`:''}
 
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:22px;background:${C.card};border:1px solid ${C.border};border-radius:12px;padding:16px 22px">
       <div style="color:${C.sub};font-size:13px">${esc(t.date)}${t.time?`<span style="margin-left:6px;color:${C.muted}">@ ${esc(t.time)}</span>`:''}</div>
@@ -943,6 +992,98 @@ function renderImport(){
 const PAGES=['Dashboard','Trades','Kalender','Rapporten'];
 const ICONS={Dashboard:'◼',Trades:'≡',Kalender:'▦',Rapporten:'↗'};
 
+function renderSharedTradeView(){
+  const t=S.sharedTrade;
+
+  if(!t){
+    return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:${C.bg};padding:20px">
+      <div style="text-align:center">
+        <div style="font-size:32px;margin-bottom:14px">🔍</div>
+        <div style="font-size:16px;font-weight:700;color:${C.text};margin-bottom:8px">Trade niet gevonden</div>
+        <div style="font-size:13px;color:${C.sub}">Deze link is ongeldig of de trade is niet meer gedeeld.</div>
+      </div>
+    </div>`;
+  }
+
+  const j=t.journal||{};
+  const win=t.pnl>0;
+  const toArr=(v)=>!v?[]:(Array.isArray(v)?v:[v]);
+  const emoBefore=toArr(j.j_emotionBefore||j.emotionBefore);
+  const emoDuring=toArr(j.j_emotionDuring||j.emotionDuring);
+  const emoAfter=toArr(j.j_emotionAfter||j.emotionAfter);
+  const planVal=j.inPlan||'';
+  const planCol=planVal.includes('✅')?C.green:planVal.includes('⚠️')?'#f59e0b':planVal.includes('❌')?C.red:C.sub;
+  const riskAmount=j.riskAmount;
+  const realizedRR=(riskAmount&&t.pnl!==null&&t.pnl!==undefined)?calcJournalRR(riskAmount,t.pnl):null;
+  const screenshot=j.screenshot;
+
+  const emoBlock=(label,arr)=>arr.length?`<div style="margin-bottom:14px">
+    <div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${label}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${arr.map(e=>tag(e,C.sub)).join('')}</div>
+  </div>`:'';
+
+  return `<div style="min-height:100vh;background:${C.bg};color:${C.text};font-family:'Inter',system-ui,sans-serif;font-size:14px;padding:32px 20px">
+    <div style="max-width:760px;margin:0 auto">
+
+      <div style="text-align:center;margin-bottom:28px">
+        <div style="font-size:10px;letter-spacing:.12em;color:${C.muted};text-transform:uppercase;margin-bottom:6px">MGC Futures · Gedeelde Trade</div>
+        <div style="font-size:18px;font-weight:900;color:${C.accent}">Trade Journal</div>
+      </div>
+
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:20px;background:${C.card};border:1px solid ${C.border};border-radius:12px;padding:18px 22px">
+        <div style="color:${C.sub};font-size:13px">${esc(t.date)}${t.time?`<span style="margin-left:6px;color:${C.muted}">@ ${esc(t.time)}</span>`:''}</div>
+        ${tag(t.side,t.side==='Long'?C.green:C.red)}
+        ${tag(t.setup,C.accent)}
+        ${tag(t.session,C.sub)}
+        <div style="margin-left:auto;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+          ${t.entry?`<div style="font-size:12px;color:${C.sub}">Entry <b style="color:${C.text}">${esc(t.entry)}</b></div>`:''}
+          ${t.exit?`<div style="font-size:12px;color:${C.sub}">Exit <b style="color:${C.text}">${esc(t.exit)}</b></div>`:''}
+          ${t.actual_r!==null&&t.actual_r!==undefined?`<div style="font-size:13px;font-weight:700;color:${t.actual_r>0?C.green:C.red}">${t.actual_r}R</div>`:''}
+          ${t.pnl!==null&&t.pnl!==undefined?`<div style="font-size:20px;font-weight:800;color:${t.pnl>0?C.green:t.pnl<0?C.red:C.sub}">${fmtD(t.pnl)}</div>`:''}
+        </div>
+      </div>
+
+      ${(realizedRR!==null||riskAmount)?card(`
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
+          ${riskAmount?`<div><div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Risk Amount</div><div style="font-size:16px;font-weight:700">$${esc(riskAmount)}</div></div>`:''}
+          ${realizedRR!==null?`<div><div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Gerealiseerde RR</div><div style="font-size:16px;font-weight:700;color:${realizedRR>=0?C.green:C.red}">${fmt(realizedRR)}R</div></div>`:''}
+        </div>
+      `,'margin-bottom:16px'):''}
+
+      ${(emoBefore.length||emoDuring.length||emoAfter.length||planVal)?card(`
+        ${emoBlock('Emotie voor de trade',emoBefore)}
+        ${emoBlock('Emotie tijdens de trade',emoDuring)}
+        ${emoBlock('Emotie na de trade',emoAfter)}
+        ${planVal?`<div>
+          <div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Was de trader in zijn plan?</div>
+          ${tag(planVal,planCol)}
+        </div>`:''}
+      `,'margin-bottom:16px'):''}
+
+      ${j.confluences?card(`
+        <div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Denkwijze & Confluences</div>
+        <div style="color:${C.text};line-height:1.7;font-size:13px;white-space:pre-wrap">${esc(j.confluences)}</div>
+      `,'margin-bottom:16px'):''}
+
+      ${screenshot?card(`
+        <div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Screenshot</div>
+        <div style="border-radius:8px;overflow:hidden;border:1px solid ${C.border}">
+          <img src="${esc(screenshot)}" style="width:100%;display:block;max-height:460px;object-fit:contain;background:#0d0f14" onerror="this.style.display='none'"/>
+        </div>
+      `,'margin-bottom:16px'):''}
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+        ${j.wentWell?card(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="width:8px;height:8px;border-radius:50%;background:${C.green}"></div><div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em">Wat ging er goed</div></div><div style="color:${C.text};line-height:1.7;font-size:13px;white-space:pre-wrap">${esc(j.wentWell)}</div>`):''}
+        ${j.wentWrong?card(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="width:8px;height:8px;border-radius:50%;background:${C.red}"></div><div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em">Wat ging er fout</div></div><div style="color:${C.text};line-height:1.7;font-size:13px;white-space:pre-wrap">${esc(j.wentWrong)}</div>`):''}
+      </div>
+
+      <div style="text-align:center;font-size:11px;color:${C.muted};padding-bottom:30px">
+        Gedeeld vanuit MGC Trade Journal · alleen-lezen weergave
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderLoadingScreen(){
   return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:${C.bg}">
     <div class="spinner"></div>
@@ -1017,6 +1158,10 @@ async function logout(){
 }
 
 function render(){
+  if(S.sharedView){
+    document.getElementById('app').innerHTML=renderSharedTradeView();
+    return;
+  }
   if(S.appLoading){
     document.getElementById('app').innerHTML=renderLoadingScreen();
     return;
@@ -1156,6 +1301,49 @@ async function saveJournal(){
   S.journalOpen=null;
   S.journalDraft={};
   render();
+}
+
+async function shareTrade(tradeId){
+  const i=S.trades.findIndex(x=>x.id===tradeId);
+  if(i<0)return;
+  S.saving=true;render();
+  const shareId=generateShareId();
+  const saved=await dbSetShareId(tradeId,shareId);
+  if(saved)S.trades[i]=saved;
+  S.saving=false;
+  render();
+  if(saved){
+    const shareUrl=window.location.origin+window.location.pathname+'?share='+saved.shareId;
+    copyShareLink(shareUrl);
+  }
+}
+
+function copyShareLink(url){
+  navigator.clipboard.writeText(url).then(()=>{
+    const box=document.getElementById('share_link_box');
+    if(box){
+      const old=box.style.background;
+      box.style.background=C.green+'22';
+      setTimeout(()=>{box.style.background=old;},600);
+    }
+    showToast('Link gekopieerd naar klembord');
+  }).catch(()=>{
+    prompt('Kopieer deze link handmatig:',url);
+  });
+}
+
+function showToast(msg){
+  let t=document.getElementById('toast');
+  if(!t){
+    t=document.createElement('div');
+    t.id='toast';
+    t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#181c26;border:1px solid #f0b429;color:#f0b429;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;z-index:999;transition:opacity .3s';
+    document.body.appendChild(t);
+  }
+  t.textContent=msg;
+  t.style.opacity='1';
+  clearTimeout(window._toastTimer);
+  window._toastTimer=setTimeout(()=>{t.style.opacity='0';},2000);
 }
 
 // CSV
