@@ -1061,8 +1061,12 @@ function renderSharedTradeView(){
       `,'margin-bottom:16px'):''}
 
       ${j.confluences?card(`
-        <div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Denkwijze & Confluences</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em">Denkwijze & Confluences</div>
+          <button id="translate_btn" onclick="translateField('confluences')" style="background:transparent;color:${C.accent};border:1px solid ${C.accent}66;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:11px;font-family:inherit">🌐 Translate to English</button>
+        </div>
         <div style="color:${C.text};line-height:1.7;font-size:13px;white-space:pre-wrap">${esc(j.confluences)}</div>
+        <div id="translation_box"></div>
       `,'margin-bottom:16px'):''}
 
       ${screenshot?card(`
@@ -1073,8 +1077,8 @@ function renderSharedTradeView(){
       `,'margin-bottom:16px'):''}
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
-        ${j.wentWell?card(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="width:8px;height:8px;border-radius:50%;background:${C.green}"></div><div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em">Wat ging er goed</div></div><div style="color:${C.text};line-height:1.7;font-size:13px;white-space:pre-wrap">${esc(j.wentWell)}</div>`):''}
-        ${j.wentWrong?card(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="width:8px;height:8px;border-radius:50%;background:${C.red}"></div><div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em">Wat ging er fout</div></div><div style="color:${C.text};line-height:1.7;font-size:13px;white-space:pre-wrap">${esc(j.wentWrong)}</div>`):''}
+        ${j.wentWell?card(`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:8px"><div style="width:8px;height:8px;border-radius:50%;background:${C.green}"></div><div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em">Wat ging er goed</div></div><button id="translate_btn_wentWell" onclick="translateField('wentWell')" style="background:transparent;color:${C.accent};border:1px solid ${C.accent}66;border-radius:7px;padding:4px 10px;cursor:pointer;font-size:10px;font-family:inherit">🌐 Translate</button></div><div style="color:${C.text};line-height:1.7;font-size:13px;white-space:pre-wrap">${esc(j.wentWell)}</div><div id="translation_box_wentWell"></div>`):''}
+        ${j.wentWrong?card(`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:8px"><div style="width:8px;height:8px;border-radius:50%;background:${C.red}"></div><div style="font-size:11px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em">Wat ging er fout</div></div><button id="translate_btn_wentWrong" onclick="translateField('wentWrong')" style="background:transparent;color:${C.accent};border:1px solid ${C.accent}66;border-radius:7px;padding:4px 10px;cursor:pointer;font-size:10px;font-family:inherit">🌐 Translate</button></div><div style="color:${C.text};line-height:1.7;font-size:13px;white-space:pre-wrap">${esc(j.wentWrong)}</div><div id="translation_box_wentWrong"></div>`):''}
       </div>
 
       <div style="text-align:center;font-size:11px;color:${C.muted};padding-bottom:30px">
@@ -1344,6 +1348,60 @@ function showToast(msg){
   t.style.opacity='1';
   clearTimeout(window._toastTimer);
   window._toastTimer=setTimeout(()=>{t.style.opacity='0';},2000);
+}
+
+// ── TRANSLATION (shared trade view only) ──────────────────────────────────
+async function translateText(text){
+  // MyMemory free translation API — no key required, splits long text into chunks of ~480 chars
+  const chunks=[];
+  let remaining=text;
+  while(remaining.length>0){
+    chunks.push(remaining.slice(0,480));
+    remaining=remaining.slice(480);
+  }
+  const translatedParts=[];
+  for(const chunk of chunks){
+    const url='https://api.mymemory.translated.net/get?q='+encodeURIComponent(chunk)+'&langpair=nl|en';
+    const res=await fetch(url);
+    const data=await res.json();
+    translatedParts.push(data&&data.responseData&&data.responseData.translatedText?data.responseData.translatedText:chunk);
+  }
+  return translatedParts.join('');
+}
+
+async function translateField(field){
+  const t=S.sharedTrade;
+  if(!t||!t.journal||!t.journal[field])return;
+  const text=t.journal[field];
+  const btnId=field==='confluences'?'translate_btn':'translate_btn_'+field;
+  const boxId=field==='confluences'?'translation_box':'translation_box_'+field;
+  const btn=document.getElementById(btnId);
+  const box=document.getElementById(boxId);
+  if(!box)return;
+
+  // Toggle off if already showing
+  if(box.dataset.shown==='1'){
+    box.innerHTML='';
+    box.dataset.shown='0';
+    if(btn)btn.textContent='🌐 Translate'+(field==='confluences'?' to English':'');
+    return;
+  }
+
+  if(btn){btn.textContent='Translating...';btn.disabled=true;}
+  box.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-top:12px;color:${C.muted};font-size:12px"><div class="spinner" style="width:16px;height:16px;border-width:2px"></div>Translating...</div>`;
+
+  try{
+    const translated=await translateText(text);
+    box.innerHTML=`<div style="margin-top:14px;padding-top:14px;border-top:1px solid ${C.border}">
+      <div style="font-size:11px;color:${C.accent};text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">🌐 English Translation</div>
+      <div style="color:${C.text};line-height:1.7;font-size:13px;white-space:pre-wrap;font-style:italic">${esc(translated)}</div>
+    </div>`;
+    box.dataset.shown='1';
+    if(btn){btn.textContent='Hide translation';btn.disabled=false;}
+  }catch(err){
+    box.innerHTML=`<div style="margin-top:12px;color:${C.red};font-size:12px">⚠ Translation failed. Please try again.</div>`;
+    if(btn){btn.textContent='🌐 Translate'+(field==='confluences'?' to English':'');btn.disabled=false;}
+  }
 }
 
 // CSV
